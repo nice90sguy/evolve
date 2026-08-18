@@ -1,0 +1,11 @@
+# akasutils runs in the ComfyUI venv (D:\projects\ComfyUI\.venv), which
+# already satisfies all of this — the file documents what the utils need so
+# any other environment can be made equivalent with:  pip install -r requirements.txt
+#
+# (Scripts additionally assume the ComfyUI service is running at
+# http://127.0.0.1:8188; the API itself is stdlib urllib, no package needed.)
+
+Pillow>=10
+numpy>=1.26
+rembg>=2.0          # background matting; first isnet-anime use downloads ~176MB to ~/.u2net
+onnxruntime>=1.17   # rembg inference backend

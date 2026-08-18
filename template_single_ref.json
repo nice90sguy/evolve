@@ -1,0 +1,36 @@
+{
+  "client_id": "claude-charmed",
+  "prompt": {
+    "unet": { "class_type": "UNETLoader", "inputs": { "unet_name": "flux-2-klein-9b-fp8.safetensors", "weight_dtype": "default" } },
+    "clip": { "class_type": "CLIPLoader", "inputs": { "clip_name": "qwen_3_8b_fp8mixed.safetensors", "type": "flux2", "device": "default" } },
+    "vae": { "class_type": "VAELoader", "inputs": { "vae_name": "flux2-vae.safetensors" } },
+    "img_ref": { "class_type": "LoadImage", "inputs": { "image": "casinogirlred_boobhand.webp" } },
+    "enc_ref": { "class_type": "VAEEncode", "inputs": { "pixels": ["img_ref", 0], "vae": ["vae", 0] } },
+    "txt": { "class_type": "CLIPTextEncode", "inputs": { "clip": ["clip", 0], "text": "Reproduce the reference image exactly: the same young woman with long wavy red hair with straight bangs, green eyes, black shiny bunny ears headband, strapless black patent-leather bunny suit leotard with side lace-up ribbons, white detached collar with black bow tie, white wrist cuff, sheer black pantyhose, white bunny tail, long thin black demon tail curling beside her. Identical standing pose with both hands pressed flat on her upper chest, identical calm smiling expression with head tilted slightly, identical soft anime art style and lighting, plain pure white background. The only change: the framing is zoomed out to a full-body shot showing her entire body from the top of her head to her feet, legs fully visible, and she is wearing glossy black patent-leather high-heeled pumps." } },
+    "zero": { "class_type": "ConditioningZeroOut", "inputs": { "conditioning": ["txt", 0] } },
+    "pos_ref": { "class_type": "ReferenceLatent", "inputs": { "conditioning": ["txt", 0], "latent": ["enc_ref", 0] } },
+    "neg_ref": { "class_type": "ReferenceLatent", "inputs": { "conditioning": ["zero", 0], "latent": ["enc_ref", 0] } },
+    "ift": { "class_type": "IdentityFeatureTransferFinal", "inputs": {
+      "model": ["unet", 0],
+      "preset": "SOFT_LOCK",
+      "enabled": true,
+      "reference_index": 0,
+      "reference_indices": "all",
+      "similarity_floor": 0.5,
+      "softmax_temperature": 0.07,
+      "mask_threshold": 1.0,
+      "double_blocks": "0-7:mid_img=0.55",
+      "single_blocks": "0:mid_img=0.22; 1:mid_img=0.24; 3:mid_img=0.28; 4:mid_img=0.22; 6:mid_img=0.26; 7:mid_img=0.27; 8:mid_img=0.25; 10:mid_img=0.27; 13:mid_img=0.27",
+      "debug": false,
+      "mask_behavior": "focus_only"
+    } },
+    "guider": { "class_type": "CFGGuider", "inputs": { "model": ["ift", 0], "positive": ["pos_ref", 0], "negative": ["neg_ref", 0], "cfg": 1.0 } },
+    "sampler": { "class_type": "KSamplerSelect", "inputs": { "sampler_name": "euler" } },
+    "sched": { "class_type": "Flux2Scheduler", "inputs": { "steps": 4, "width": 1024, "height": 1536 } },
+    "noise": { "class_type": "RandomNoise", "inputs": { "noise_seed": 774421058 } },
+    "latent": { "class_type": "EmptyFlux2LatentImage", "inputs": { "width": 1024, "height": 1536, "batch_size": 1 } },
+    "samp": { "class_type": "SamplerCustomAdvanced", "inputs": { "noise": ["noise", 0], "guider": ["guider", 0], "sampler": ["sampler", 0], "sigmas": ["sched", 0], "latent_image": ["latent", 0] } },
+    "dec": { "class_type": "VAEDecode", "inputs": { "samples": ["samp", 0], "vae": ["vae", 0] } },
+    "save": { "class_type": "SaveImage", "inputs": { "images": ["dec", 0], "filename_prefix": "charmed2/cgr_boobhand_fullbody" } }
+  }
+}
