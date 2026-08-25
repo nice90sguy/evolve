@@ -29,13 +29,13 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 
-from pose_from_char import COMFY, queue, wait
-from qwen_vp_probe import CLIP_NAME, LORA_LIGHTNING, MODEL_GGUF, VAE_NAME
+import _cli  # noqa: F401  (puts the evolve package dir on sys.path)
+from comfy_client import COMFY_DIR as COMFY, queue, wait
+from build_payload.qwen_edit import CLIP_NAME, LORA_LIGHTNING, MODEL_GGUF, VAE_NAME
 
 HERE = Path(__file__).resolve().parent
-SCRATCH_PREFIX = "akasutils_scratch"
+from comfy_client import SCRATCH_PREFIX  # noqa: E402
 DEPTH_CKPT = "depth_anything_v2_vitl.pth"   # cached in controlnet_aux/ckpts
 
 
@@ -57,7 +57,7 @@ def get_depth(image_name, size, resolution=1024):
     """Depth Anything v2 via the running ComfyUI. Returns float array in
     [0,1] at the source image size, where 1.0 = NEAREST (it emits disparity,
     bright = close)."""
-    pid = queue({"client_id": "akasutils", "prompt": depth_graph(image_name, resolution)})
+    pid = queue({"client_id": "evolve", "prompt": depth_graph(image_name, resolution)})
     out = wait(pid, timeout=300)
     if not out:
         sys.exit("depth pass produced no image")
@@ -433,7 +433,7 @@ def main():
                          a.denoise, not a.no_lightning, f"warp_ref_{src.stem}")
         suffix = f"global_dn{a.denoise:g}"
 
-    pid = queue({"client_id": "akasutils", "prompt": g})
+    pid = queue({"client_id": "evolve", "prompt": g})
     for got in wait(pid, timeout=900):
         dest = out_dir / f"{src.stem}__{tag}_{suffix}.png"
         Image.open(got).save(dest)

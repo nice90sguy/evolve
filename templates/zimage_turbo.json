@@ -1,0 +1,104 @@
+{
+ "client_id": "akasutils",
+ "prompt": {
+  "unet": {
+   "class_type": "UNETLoader",
+   "inputs": {
+    "unet_name": "z_image_turbo_bf16.safetensors",
+    "weight_dtype": "default"
+   }
+  },
+  "clip": {
+   "class_type": "CLIPLoader",
+   "inputs": {
+    "clip_name": "qwen_3_4b.safetensors",
+    "type": "lumina2",
+    "device": "default"
+   }
+  },
+  "vae": {
+   "class_type": "VAELoader",
+   "inputs": {
+    "vae_name": "ae.safetensors"
+   }
+  },
+  "pos": {
+   "class_type": "CLIPTextEncode",
+   "inputs": {
+    "text": "PROMPT",
+    "clip": [
+     "clip",
+     0
+    ]
+   }
+  },
+  "neg": {
+   "class_type": "CLIPTextEncode",
+   "inputs": {
+    "text": "NEGATIVE",
+    "clip": [
+     "clip",
+     0
+    ]
+   }
+  },
+  "latent": {
+   "class_type": "EmptySD3LatentImage",
+   "inputs": {
+    "width": 1024,
+    "height": 1024,
+    "batch_size": 1
+   }
+  },
+  "samp": {
+   "class_type": "KSampler",
+   "inputs": {
+    "seed": 0,
+    "steps": 20,
+    "cfg": 2.0,
+    "sampler_name": "euler",
+    "scheduler": "sgm_uniform",
+    "denoise": 1,
+    "model": [
+     "unet",
+     0
+    ],
+    "positive": [
+     "pos",
+     0
+    ],
+    "negative": [
+     "neg",
+     0
+    ],
+    "latent_image": [
+     "latent",
+     0
+    ]
+   }
+  },
+  "dec": {
+   "class_type": "VAEDecode",
+   "inputs": {
+    "samples": [
+     "samp",
+     0
+    ],
+    "vae": [
+     "vae",
+     0
+    ]
+   }
+  },
+  "save": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "images": [
+     "dec",
+     0
+    ],
+    "filename_prefix": "evolve_scratch/evolve"
+   }
+  }
+ }
+}

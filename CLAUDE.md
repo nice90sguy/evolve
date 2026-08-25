@@ -1,4 +1,4 @@
-# akasutils — context for Claude
+# evolve — context for Claude
 
 A set of utilities to facilitate designing **game characters, scenes, LoRA
 adaptors, and identity-preserving transforms** for Ren'Py games, by driving
@@ -155,8 +155,8 @@ told otherwise.
   `CFGGuider` cfg 1.0 + `SamplerCustomAdvanced`; negative = 
   `ConditioningZeroOut` of the prompt, ref-chained like the positive.
 - API-format JSON opened in the ComfyUI UI shows an EMPTY canvas (no node
-  geometry — a silent no-op). `..\charmed_pipeline\api_to_ui.py` converts any
-  payload into a loadable graph: topological auto-layout, with exact
+  geometry — a silent no-op). `add_geometry.py` (adopted from
+  `..\charmed_pipeline\api_to_ui.py`) converts any payload into a loadable graph: topological auto-layout, with exact
   socket/widget definitions fetched from the live server's
   `/object_info/<class>` (widget vs socket: combo lists and INT/FLOAT/STRING/
   BOOLEAN are widgets; `control_after_generate` inputs get an extra "fixed"
@@ -429,7 +429,45 @@ NOT a model family. Driver: `qwen_vp_probe.py`.
       OMITTING its token (partial grammars untested); idempotent re-runs =
       more takes of the same camera.
 
-## Repo contents & siblings
+## Code layout (reorg 2026-08-25 — the user's scheme; see README.md)
+
+The repo dir is `D:\projects\ComfyUI\evolve` (renamed from `akasutils`).
+Runtime is a flat set of lowercase-noun modules, dependency order bottom-up:
+`project` (global root, projects, config) → `comfy_client` (queue/wait/free/
+interrupt/liveness, live progress) → `image_utils` (snap16, flatten, fit,
+`matte` = the old finalize.py) / `image_file` (sha1, chunks, `write_png`,
+hardlink staging, `<prefix>NNNNN.png`) / `image_meta` (evolve chunk,
+harvest, glean; CLI = the old imgmeta.py) / `add_geometry` (the old
+api_to_ui.py) → `templates/*.json` (`flux_klein_9b`, `zimage_turbo`,
+`illustrious_sdxl`, `qwen_edit_camera` — the graphs, runnable as-is) →
+`build_payload/` (template-driven builders, one per family) → `controls`
+(the ONE controls table: defaults / sanitise / restore-from-recipe) →
+`store` (Store + `open_project`) → `trash` (roots, gc, discard, sweep,
+prune), `asset`, `lora`, `lineage` → operators `generate`
+(`do_generate(GenerateConfig)`), `camera` (`do_camera(CameraConfig)`, owns
+the viewpoint vocab), `training` (`do_training(TrainConfig)`) + `lora_train/`
+(`common.Trainer` interface; `zimage_turbo`, `flux_klein_9b`,
+`illustrious` = honest no-op) → `jobs` (one-GPU runner) → `api` (aiohttp
+handlers `handle_<name>`, snapshot, `create_app`) → `evolve.py` (argparse +
+wiring only; `--root` MANDATORY, nothing cwd-relative). UI = `frontend/`
+(`index.html`, `css/evolve.css`, `js/evolve.js` — real files, served live
+from disk with no-store). Standalone drivers live in `tools/` and import
+`_cli` first (`pose_from_char`, `camera_probe` = old qwen_vp_probe,
+`train_lora`, `lora_test`, `tween`, `watch`, parked `depth_warp` /
+`quantize_te_fp8`). `tests/` = store / payloads / frontend contract /
+HTTP smoke (all run without ComfyUI). Scratch prefix is now
+`output\evolve_scratch`, progress client id `evolve`,
+`last_payload.json` lives in `<root>/_debug/`. Old→new names:
+pose_from_char.py → comfy_client.py + tools/pose_from_char.py;
+qwen_vp_probe.py → camera.py + build_payload/qwen_edit.py +
+tools/camera_probe.py; char_lora_zimage/flux.py → lora_train/*;
+test_lora_flux.py → lora_train/flux_klein_9b.py (`fix_flux2_keys`) +
+tools/lora_test.py; finalize.py → image_utils.matte; imgmeta.py →
+image_meta.py; template_klein.json → templates/flux_klein_9b.json.
+The notes below predate the reorg and use the OLD file names; the
+behaviour they record is unchanged (builders verified byte-identical).
+
+## Repo contents & siblings (pre-reorg notes — old file names)
 
 - `pose_from_char.py` (renamed from `generate_from_refs.py`) — the workhorse:
   multi-ref identity render (`--ref "primary.webp,extra.webp"`, `--locks

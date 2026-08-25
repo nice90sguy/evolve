@@ -41,7 +41,9 @@ from pathlib import Path
 
 from PIL import Image
 
-from pose_from_char import COMFY, free_vram, queue, snap16, wait_entry
+import _cli  # noqa: F401  (puts the evolve package dir on sys.path)
+from comfy_client import COMFY_DIR as COMFY, SCRATCH_PREFIX, free_vram, queue, wait_entry
+from image_utils import snap16
 
 HIGH = "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors"
 LOW = "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors"
@@ -100,7 +102,7 @@ def build_high(common, seed, steps, cfg, shift):
                             "negative": ["flf", 1], "latent_image": ["flf", 2]}}
     g["sl"] = {"class_type": "SaveLatent",
                "inputs": {"samples": ["ks_h", 0],
-                          "filename_prefix": "akasutils_scratch/tween_hi"}}
+                          "filename_prefix": f"{SCRATCH_PREFIX}/tween_hi"}}
     return {"client_id": "tween", "prompt": g}
 
 
@@ -129,13 +131,13 @@ def build_low(common, latent_name, seed, steps, cfg, shift, fps, provenance):
                 "inputs": {"samples": ["ks_l", 0], "vae": ["vae", 0]}}
     g["vid"] = {"class_type": "VHS_VideoCombine",
                 "inputs": {"frame_rate": fps, "loop_count": 0,
-                           "filename_prefix": "akasutils_scratch/tween",
+                           "filename_prefix": f"{SCRATCH_PREFIX}/tween",
                            "format": "video/h264-mp4", "pix_fmt": "yuv420p",
                            "crf": 19, "save_metadata": True,
                            "trim_to_audio": False, "pingpong": False,
                            "save_output": True, "images": ["dec", 0]}}
     return {"client_id": "tween", "prompt": g,
-            "extra_data": {"extra_pnginfo": {"akasutils_tween": provenance}}}
+            "extra_data": {"extra_pnginfo": {"evolve_tween": provenance}}}
 
 
 def wait_latent(prompt_id, timeout=3600):

@@ -30,7 +30,7 @@ import torch
 from safetensors import safe_open
 from safetensors.torch import save_file
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+import _cli  # noqa: F401,E402  (utf-8 console; evolve package on sys.path)
 E4M3_MAX = 448.0
 
 

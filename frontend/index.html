@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Evolver</title>
+<link rel="stylesheet" href="/static/css/evolve.css">
+</head><body>
+<div id="app">
+<nav>
+  <div id="proj" title="project = a subdir of the root; its only effect is the path context for images. Each project has its own background tint"><span id="projsw" class="sw"></span><select id="projsel"></select><button id="projnew" title="create a new project">+</button></div>
+  <a id="nav-evolver" class="on">Evolver</a><a id="nav-assets">Assets</a>
+  <div class="spacer"></div>
+</nav>
+<main>
+  <div id="top">
+    <details class="car" id="car-hist" open><summary><b>History</b> <span class="n">0</span> — images bred from: the ref0 of each Generate, the source of each POV; newest first</summary>
+      <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
+    <details class="car drop" id="car-pin" data-target="pin" data-index="999"><summary><b>Pinned</b> <span class="n">0</span> — P pins the selection; Del here unpins; drop / paste to pin</summary>
+      <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
+    <details class="car" id="car-all"><summary><b>All</b> <span class="n">0</span> — every image in this project, by number</summary>
+      <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
+    <details id="genea"><summary><b>Genealogy</b> — of the Working Image</summary>
+      <details class="car" id="car-gpar" open><summary><b>Parents</b> <span class="n">0</span> — its reference images</summary>
+        <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
+      <details class="car" id="car-gsib" open><summary><b>Siblings</b> <span class="n">0</span> — identical config, seeds aside</summary>
+        <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
+      <details class="car" id="car-gkid" open><summary><b>Children</b> <span class="n">0</span> — images that used it as an input</summary>
+        <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
+    </details>
+  </div>
+  <div id="work">
+    <div id="stage">
+      <div id="stagebox" class="drop" data-target="working" tabindex="0"><div class="hint">working image<br>drop · paste · double-click a candidate</div></div>
+      <div id="recipe"></div>
+    </div>
+    <div id="split" title="drag to resize"></div>
+    <div id="genpanel">
+      <div id="controls">
+        <div id="tabbar">
+          <button class="tabb" data-tab="create">Create</button>
+          <button class="tabb" data-tab="derive">Derive</button>
+          <button class="tabb" data-tab="camera">Camera</button>
+          <button class="tabb" data-tab="tween">Tween</button>
+        </div>
+        <div id="shared">
+          <div id="prompts">
+            <textarea id="prompt" placeholder="+ive prompt"></textarea>
+            <textarea id="negative" placeholder="-ive prompt"></textarea>
+          </div>
+          <div class="knobs">
+            <label>steps <input type="number" id="steps" min="0" max="100" style="width:48px" title="0 = family default"></label>
+            <label>cfg <input type="number" id="cfg" min="0" max="20" step="0.5" style="width:52px" title="0 = family default"></label>
+            <label>lora <select id="lora"><option value="">(none)</option></select></label>
+            <label>str <input type="number" id="lstr" step="0.1" min="0" max="4" value="1"></label>
+            <label><input type="checkbox" id="whitebg" checked> white bg</label>
+          </div>
+        </div>
+        <div class="tpage" data-tab="create">
+          <div class="knobs">
+            <label>model <select id="family"></select></label>
+            <label>Outputs: <input type="number" id="outputs_create" min="1" max="64" value="6"></label>
+            <label>base seed <input type="number" id="seed_create" value="0" title="0 = random base; candidate k gets base+k"></label>
+          </div>
+        </div>
+        <div class="tpage" data-tab="derive">
+          <div class="knobs">
+            <span id="refs">
+              <div class="ref drop" data-target="ref0" data-index="0" tabindex="0" title="reference 0 — the identity/continuity carrier. Click the working image to put it here (click while holding Space = its parent); picking an image auto-sets its parent"><span class="hint">ref0</span></div>
+              <div class="ref drop" data-target="ref" data-index="0" tabindex="0"><span class="hint">+</span></div>
+              <div class="ref drop" data-target="ref" data-index="1" tabindex="0"><span class="hint">+</span></div>
+              <div class="ref drop" data-target="ref" data-index="2" tabindex="0"><span class="hint">+</span></div>
+            </span>
+            <label>lock <select id="lock"><option>SOFT_LOCK</option><option>MID_LOCK</option><option>HARD_LOCK</option></select></label>
+            <label>vary <input type="range" id="vary" min="0" max="0.5" step="0.02" value="0" title="sibling variety: seeded noise added to the reference latent. 0.1-0.3 useful; above ~0.45 the reference is mostly noise and output degrades"> <span id="varyv">0</span></label>
+            <label>Outputs: <input type="number" id="outputs_derive" min="1" max="64" value="6"></label>
+            <label>base seed <input type="number" id="seed_derive" value="0" title="0 = random base; candidate k gets base+k"></label>
+          </div>
+        </div>
+        <div class="tpage" data-tab="camera">
+          <div id="camrows">
+            <div class="csec">
+              <label class="chead"><input type="checkbox" id="chk_dist"> Distance</label>
+              <div class="cbody" id="body_dist"><input type="range" id="cam_dist" min="0" max="2" step="1" value="1"><div class="stops" id="stops_dist"></div></div>
+            </div>
+            <div class="csec">
+              <label class="chead"><input type="checkbox" id="chk_elev"> Elevation</label>
+              <div class="cbody" id="body_elev"><input type="range" id="cam_elev" min="0" max="3" step="1" value="1"><div class="stops" id="stops_elev"></div></div>
+            </div>
+            <div class="csec">
+              <label class="chead"><input type="checkbox" id="chk_azim"> Orbit</label>
+              <div class="cbody" id="body_azim"><svg id="dial" viewBox="0 0 132 132" width="132" height="132"></svg><div id="dialval"></div></div>
+            </div>
+          </div>
+          <div class="knobs">
+            <label>Outputs: <input type="number" id="outputs_camera" min="1" max="64" value="4"></label>
+            <label>base seed <input type="number" id="seed_camera" value="0" title="0 = random base"></label>
+          </div>
+          <div class="hint" style="padding:2px 0">re-shoots the working image at exactly these settings — unchecked axes are left to the model</div>
+        </div>
+        <div class="tpage" data-tab="tween">
+          <div class="hint" style="padding:12px 4px">Tween — two keyframes to motion (Wan FLF2V). Coming soon.</div>
+        </div>
+        <div id="actionfoot">
+          <span id="status"></span>
+          <span id="seedused" title="base used last round"></span>
+          <button id="gen">Generate</button>
+        </div>
+      </div>
+      <div id="hsplit" title="drag to resize"></div>
+      <div id="output">
+        <div class="ghead"><b>Output</b> <span class="n">0</span> <span>— P keeps; anything unpinned is archived when the next round runs · Shift+Del discards any image now</span></div>
+        <div class="grid" id="sheet"></div>
+      </div>
+    </div>
+  <div id="assets" hidden>
+    <div class="ahead">
+      <select id="assetsel" title="assets are root-global: shared by every project"></select>
+      <button id="assetnew" title="create a new asset (its name is also the LoRA trigger)">+ new</button>
+      <button id="assetdel" title="delete this asset — the images themselves are untouched">delete</button>
+      <button id="assetfolder" title="import every image in a disk folder (recursive, server-side — fast for big datasets) into this asset">add folder…</button>
+      <span class="hint">drag any image in to add it · Del removes an entry · the description IS the training caption and must start with the asset name</span>
+      <span style="flex:1"></span>
+      <select id="trainfam" title="training family"><option value="zimage">Z-Image</option><option value="klein">Flux Klein (experimental)</option></select>
+      <button id="maketrain" title="sync the dataset to _train/ and train a LoRA — this IS the explicit say-so">Make LoRA</button>
+      <button id="trainstop" hidden>Stop training</button>
+      <span id="trainstat"></span>
+    </div>
+    <div id="agrid" class="drop" data-target="agrid" data-index="0" tabindex="0" title="click to focus, then Ctrl-V pastes a clipboard image straight into this dataset"></div>
+  </div>
+  </div>
+  <div id="bottom">
+    <span class="lab">session</span>
+    <label>w <input type="number" id="width" step="16" value="1024"></label>
+    <label>h <input type="number" id="height" step="16" value="1024"></label>
+    <label title="reload pristine model weights before every round (~15-30s); otherwise only after a round that used a LoRA (ComfyUI #11021)"><input type="checkbox" id="fresh"> reload model on Generate</label>
+    <button id="gc" title="archive every image that is not pinned, not in the live working set (WI / refs / candidates), and not an ancestor of those">Collect garbage</button>
+    <span id="msg"></span>
+    <span class="spacer"></span>
+    <span id="progwrap"><progress id="prog" max="1" value="0"></progress> <span id="progtxt"></span></span>
+    <span class="svc" title="ComfyUI at 127.0.0.1:8188">ComfyUI <i id="comfy-dot" class="dot"></i></span>
+    <span class="svc" title="this evolve server">evolve <i id="evolve-dot" class="dot"></i></span>
+  </div>
+</main>
+<div id="toasts"></div>
+<div id="prunedlg" hidden>
+  <div class="pbox">
+    <div class="ptitle"></div>
+    <div class="pbody"></div>
+    <label class="pforce"><input type="checkbox" id="pforce"> also unpin / remove from assets, and archive everything in the branch</label>
+    <div class="pbtns"><button id="pcancel">Cancel</button><button id="pgo">Prune</button></div>
+  </div>
+</div>
+<div id="gridview" hidden>
+  <div class="ghead2"><b id="gridtitle"></b> <span class="n" id="gridcount"></span>
+    <button class="sz" id="gridsz" title="toggle thumbnail size">+</button>
+    <span class="hint">click selects · dbl-click sends to the WI and closes · hold Space = full-size preview · Esc closes</span>
+    <span style="flex:1"></span>
+    <button class="iconb" id="gridclose" title="close (Esc)"></button></div>
+  <div id="gridbody"></div>
+  <div id="gridpeek" hidden><img alt=""></div>
+</div>
+</div>
+<script src="/static/js/evolve.js"></script>
+</body></html>

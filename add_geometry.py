@@ -1,4 +1,4 @@
-"""api_to_ui.py - convert an API-format payload into a loadable UI graph.
+"""add_geometry.py - convert an API-format payload into a loadable UI graph.
 
 Adopted 2026-08-22 from ..\\..\\charmed_pipeline\\api_to_ui.py (kept there for
 the legacy pipeline) so evolve can embed an optional `workflow` chunk
@@ -117,7 +117,7 @@ def convert_payload(prompt):
             if n["id"] == src_id and src_slot < len(n["outputs"]):
                 n["outputs"][src_slot]["links"].append(l[0])
 
-    return {"id": "akasutils-evolve", "revision": 0,
+    return {"id": "evolve", "revision": 0,
             "last_node_id": max(ids.values()), "last_link_id": link_id,
             "nodes": nodes, "links": links, "groups": [], "config": {},
             "extra": {}, "version": 0.4}
