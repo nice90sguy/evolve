@@ -758,6 +758,89 @@ behaviour they record is unchanged (builders verified byte-identical).
   same features), `api_to_ui.py`, README with the manual curl-level steps,
   and the original experiment payloads.
 
+## Tags & views — SPECCED 2026-08-25, NOT BUILT (wait for the user's go)
+
+Supersedes: projects-as-directories, `archive/`, per-project state/journal,
+asset datasets as lists, `trash.py`'s root machinery. Settled over a long
+design dialogue; the user separated two things and so must we:
+
+**(a) THE REQUIREMENT (user's, fixed):** the user decides how images are
+grouped, filtered and given meaning by putting WORDS (tags) on them:
+`julie`, `possible`, `inn_scene_ideas`, `lora_dataset_tierney`, `pinned`.
+Words are invented on the fly, added or removed, NEVER edited textually.
+"This goes into the julie dataset" and "keep this in the possible pile" are
+the same act - adding a word - and the pile is the view the word defines.
+Tags never interfere with inheritance (lineage is lineage).
+**(b) INTERNAL USE (Claude's call, user merely suggested it):** use a tag
+internally when the thing is a per-image predicate that views filter on;
+keep it structural when it is ordered, positional or transient. Decided
+(user agreed): archived and pinned ARE tags (user-visible words);
+candidates/WI/ref0/refs/history/busy are NOT.
+
+- **One store.** ONE `images/` dir, ONE journal, ONE state.json under
+  `--root`. No project subdirs, no `archive/` - files never move; ids are
+  global; every parent edge resolves ("cross-project parents unknowable"
+  dies). `/img/<id>`; staging `input/evolve/<root-name>/<id>.png`.
+- **Birth.** A new image gets (1) its MOTHER's (parent 0) tags copied at
+  birth, EXCEPT `archived` and `pinned` (a child of trash is not trash, a
+  child of a kept image is not kept); (2) the DEFAULT TAGS from app
+  settings - a user-edited list, e.g. `softlock`, `(c) 2026 Josh` (this
+  replaces "project"; it is deliberately not a single "context" tag).
+  Co-parents contribute nothing.
+- **Cascade.** Changing a parent's words re-words its descendants along
+  parent-0 edges (the tree), as a per-operation checkbox "apply to
+  descendants" DEFAULT CHECKED. Rule 1 (agreed): ADD skips archived
+  descendants (they are the vast majority and nobody cares); REMOVE does
+  NOT skip them (a resurrected image must not carry a stale word). A
+  descendant re-tagged independently keeps its own words; a later cascade
+  from above adds/removes on top - never a conflict, because words are
+  add/remove only. Cascade is one-shot (descendants existing now);
+  future children inherit at birth. Journal: ONE `tag` event per
+  operation listing every id it touched (auditable).
+- **Trash in the new vocabulary.** discard = add `archived` to one image;
+  sweep = add `archived` to unpinned candidates not in the live set before
+  a round; prune = cascade `archived` down a branch (safe skips
+  pinned/dataset-tagged images... revisit: with archived-as-hide the old
+  refusals mostly vanish); unarchive = remove the word. GARBAGE = archived
+  AND not an ancestor of any unarchived image (provenance closure - the
+  ONLY surviving integrity rule); PURGE = an explicit command deleting
+  those files (+ staged links). Archived images leave every view
+  including datasets (sync skips them).
+- **Assets.** `assets.json` = `[{name, loras[]}]`. Dataset membership is
+  a user word (e.g. `lora_dataset_julie`) and the dataset is that view.
+  DESCRIPTION is 1-1 with the image (keyed by content sha1), a plain
+  description of the image and nothing else; the app prefixes the trigger
+  (`<name>, `) at sync time. Validation flips: warn if a description
+  already STARTS with a trigger (double prefix). Descriptions are seeded
+  (recipe prompt), never cascaded. sha1 identity also means scans/drops of
+  an existing file re-attach to its record (no twins).
+- **Views v1 (this round, for testing):** every word is a view - click a
+  tag, see its carousel - and for THIS round the `archived` view is
+  INCLUDED so the user can inspect the trash; other views do NOT imply
+  `!archived` yet... (decide at build: simplest = no implicit filter at
+  all in v1). "Tag everything in this view". Sort by id. Tag chips +
+  add/remove with autocomplete in the Info popup (right-click).
+  Expression views (`julie & !possible`, `lora_dataset_*`) come next as
+  boolean-over-globs - NOT JS regexes, so no regex box is exposed (user:
+  only expose it if regexes were the natural implementation; they are
+  not). Saved/named views later.
+- **Migration (do it BEFORE any more generation):** the 44 images in
+  `D:\home\josh\Documents\evolve_projects` (softlock 1-15, shared_assets
+  1-15 = identical copies + 73-86 hand-copied from the old store, no
+  journal records) -> one `images/`, renumbered, sha1-deduped, words
+  `softlock` / `shared_assets` seeded from origin dir, `archived` from any
+  `archive/`, recipes from each png's `evolve` chunk (origin project/id
+  recorded as provenance, NOT identity - the chunk in an immutable file
+  keeps naming its birthplace), parents only where verifiable (ids alive
+  here AND file sha256 matches the LoadImage `is_changed` in the `prompt`
+  chunk), `assets.json` -> `{name, loras}` + `lora_dataset_<name>` words,
+  descriptions with the leading trigger stripped. Non-png / alpha files
+  get a flattened png copy under a new id; originals are reported, never
+  deleted (user's job). Scan = the same code, run on demand ("scan" was
+  the user's word; "adopt" was rejected).
+- **Process rule (user, 2026-08-25):** write the spec into CLAUDE.md FIRST,
+  then WAIT for an explicit go before coding it.
+
 ## Roadmap
 
 - Character canonicalization util (Illustrious design → Klein master ref).
