@@ -5,6 +5,8 @@ the persist filter, the sanitiser applied on load/receive, and the
 restore-from-recipe rule (picking an image restores the run state that
 GENERATED it). The client renders/reads widgets by these same names.
 """
+from model_family import DEFAULT_MODEL_FAMILY, parse_model_family
+
 TABS = ("create", "derive", "camera")
 
 CONTROLS = {"prompt": "", "negative": "", "family": "klein",
@@ -37,6 +39,7 @@ def sanitize_controls(given, alive):
     c["refs"] += [None] * (3 - len(c["refs"]))
     if c.get("tab") not in TABS:
         c["tab"] = "create"
+    c["family"] = parse_model_family(c.get("family"), DEFAULT_MODEL_FAMILY).value
     return c
 
 
@@ -58,7 +61,7 @@ def restore_from_image(store, i):
         return
     c["prompt"] = r.get("prompt", c["prompt"])
     c["negative"] = r.get("negative", "")
-    c["family"] = r.get("family") or "klein"
+    c["family"] = parse_model_family(r.get("family"), DEFAULT_MODEL_FAMILY).value
     c["steps"] = int(r.get("steps") or 0)
     c["cfg"] = float(r.get("cfg") or 0)
     c["seed"] = int(r.get("seed") or 0)

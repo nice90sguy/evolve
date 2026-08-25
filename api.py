@@ -18,6 +18,7 @@ import urllib.request
 from pathlib import Path
 
 from aiohttp import web
+from pydantic import ValidationError
 
 import asset as asset_mod
 import camera
@@ -25,7 +26,8 @@ import comfy_client
 import lineage
 import trash
 from controls import persistable, restore_from_image, sanitize_controls
-from generate import FAMILIES, GenerateConfig, do_generate
+from model_family import model_families_for_ui
+from generate import GenerateConfig, do_generate
 from image_file import list_images
 from jobs import Jobs
 from lora import list_loras
@@ -47,13 +49,12 @@ class App:
     def snapshot(self):
         snap = self.store.snapshot()
         snap.update({
-            "assets": asset_mod.load_assets(),
+            "assets": [a.model_dump(mode="json") for a in asset_mod.load_assets()],
             "settings": load_settings(),
             "train": self.jobs.train_status(),
             "comfy_ok": comfy_client.is_alive(busy=bool(self.jobs.busy)),
             "busy": self.jobs.busy,
-            "families": {k: {"label": v["label"], "steps": v["steps"], "cfg": v["cfg"]}
-                         for k, v in FAMILIES.items()},
+            "families": model_families_for_ui(),
             "pov_azim": camera.AXIS_AZIMUTH, "pov_elev": camera.AXIS_ELEVATION,
             "pov_dist": camera.AXIS_DISTANCE,
             "loras": list_loras()})
@@ -70,6 +71,12 @@ def ok(**kw):
 
 def error(msg, status=400):
     return web.json_response({"error": msg}, status=status)
+
+
+def invalid(e):
+    """A pydantic ValidationError as one readable 400."""
+    msgs = [f"{'.'.join(str(x) for x in err['loc']) or 'input'}: {err['msg']}" for err in e.errors()]
+    return error("; ".join(msgs))
 
 
 def id_list(b):
@@ -231,7 +238,10 @@ async def handle_generate(request):
         c["refs"] = [None, None, None]
     else:
         c["family"] = "klein"
-    cfg = GenerateConfig.from_controls(c, op)
+    try:
+        cfg = GenerateConfig.from_controls(c, op)
+    except ValidationError as e:
+        return invalid(e)
     with store.lock:
         store.state["controls"] = c
         store.state["slots"] = max(1, min(64, int(given.get("outputs") or store.state["slots"])))
@@ -250,14 +260,14 @@ async def handle_pov(request):
     if why:
         return error(why, 409)
     q = await request.json()
-    az, el, di = q.get("azim") or None, q.get("elev") or None, q.get("dist") or None
-    if not camera.valid_axes(az, el, di):
-        return error("bad camera token")
-    if not (az or el or di):
-        return error("no camera axis selected")
     if not store.alive(store.state["working"]):
         return error("no working image to re-shoot")
-    cfg = camera.CameraConfig(store.state["working"], az, el, di, int(q.get("seed") or 0))
+    try:
+        cfg = camera.CameraConfig(source_id=store.state["working"],
+                                  azim=q.get("azim") or None, elev=q.get("elev") or None,
+                                  dist=q.get("dist") or None, seed=int(q.get("seed") or 0))
+    except ValidationError as e:
+        return invalid(e)
     with store.lock:
         store.state["slots"] = max(1, min(64, int(q.get("outputs") or store.state["slots"])))
         store.save_state()
@@ -390,20 +400,22 @@ async def handle_asset(request):
     b = await request.json()
     with store.lock:
         assets = asset_mod.load_assets()
-        why = asset_mod.apply_op(assets, b.get("op"), (b.get("name") or "").strip(), b.get("path"))
+        why = asset_mod.apply_op(assets, b.get("op"), (b.get("name") or "").strip(),
+                                 b.get("path"), b.get("family"))
         if why:
             return error(why, 404 if why.startswith("no asset") else 400)
         asset_mod.save_assets(assets)
-    return ok(assets=assets)
+    return ok(assets=[a.model_dump(mode="json") for a in assets])
 
 
 async def handle_train(request):
     app = ctx(request)
     b = await request.json()
     name = (b.get("name") or "").strip()
-    family = b.get("family") or "zimage"
-    if family not in ("zimage", "klein", "illustrious"):
-        return error(f"bad family {family!r}")
+    try:
+        cfg = TrainConfig(asset=name, family=b.get("family") or "zimage", steps=b.get("steps"))
+    except ValidationError as e:
+        return invalid(e)
     if app.jobs.busy:
         return error("generating - wait or Stop first", 409)
     if app.jobs.training_running():
@@ -414,8 +426,7 @@ async def handle_train(request):
         sync_dataset(app.store, name)
     except ValueError as e:
         return error(str(e))
-    cfg = TrainConfig(name, family, b.get("steps"))
-    app.jobs.start_training(name, family, log_path(name), lambda: do_training(cfg))
+    app.jobs.start_training(name, cfg.family.value, log_path(name), lambda: do_training(cfg))
     return ok(started=True, log=str(log_path(name)))
 
 

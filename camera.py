@@ -11,9 +11,10 @@ in CLAUDE.md; the short version: elevation and distance are the reliable
 axes, azimuth needs background geometry for chirality, ~1/4 turn envelope.
 """
 import re
-from dataclasses import dataclass
+from typing import Optional
 
 from PIL import Image
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from build_payload import qwen_edit
 from comfy_client import free_vram, queue, wait
@@ -96,13 +97,39 @@ def parse_vp(spec):
     return camera_prompt(az, el, di), f"{az}-{el}-{di}"
 
 
-@dataclass
-class CameraConfig:
-    source_id: int                 # the WI
-    azim: str = None
-    elev: str = None
-    dist: str = None
-    seed: int = 0                  # 0 = random
+class CameraConfig(BaseModel):
+    source_id: int = Field(ge=1)          # the WI
+    azim: Optional[str] = None            # None = axis unchecked, token omitted
+    elev: Optional[str] = None
+    dist: Optional[str] = None
+    seed: int = Field(0, ge=0)            # 0 = random
+
+    @field_validator("azim")
+    @classmethod
+    def _azim(cls, v):
+        if v is not None and v not in AZIMUTH:
+            raise ValueError(f"bad azimuth {v!r} (one of: {', '.join(AZIMUTH)})")
+        return v
+
+    @field_validator("elev")
+    @classmethod
+    def _elev(cls, v):
+        if v is not None and v not in ELEVATION:
+            raise ValueError(f"bad elevation {v!r} (one of: {', '.join(ELEVATION)})")
+        return v
+
+    @field_validator("dist")
+    @classmethod
+    def _dist(cls, v):
+        if v is not None and v not in DISTANCE:
+            raise ValueError(f"bad distance {v!r} (one of: {', '.join(DISTANCE)})")
+        return v
+
+    @model_validator(mode="after")
+    def _some_axis(self):
+        if not self.any_axis():
+            raise ValueError("no camera axis selected")
+        return self
 
     def any_axis(self):
         return bool(self.azim or self.elev or self.dist)

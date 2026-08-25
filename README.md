@@ -49,7 +49,8 @@ Runtime (what `evolve.py` needs), dependency order bottom-up:
 | `controls.py` | the generator controls table (defaults, sanitise, restore-from-recipe) |
 | `store.py` | `Store`: images + journal + live state, tags (birth copy, cascade), descriptions, garbage/purge |
 | `trash.py` | discard, sweep, prune, purge — in tag vocabulary |
-| `asset.py`, `lora.py`, `lineage.py` | assets `{name, loras}` + dataset word/captions; LoRA dropdown resolution; siblings/family |
+| `model_family.py` | `ModelFamily` enum + per-family capabilities — the one definition every config, dropdown and trainer validates against |
+| `asset.py`, `lora.py`, `lineage.py` | assets `{name, loras: [{path, family}]}` + dataset word/captions; per-family LoRA dropdown (`loras/<asset>/<family>/`); siblings/family |
 | `generate.py`, `camera.py`, `training.py` | the operators: `do_generate(GenerateConfig)`, `do_camera(CameraConfig)`, `do_training(TrainConfig)` |
 | `lora_train/` | `Trainer` interface (`common.py`) + `zimage_turbo`, `flux_klein_9b`, `illustrious` (not available yet) |
 | `jobs.py` | one-GPU job runner: busy flag, abort, training status |

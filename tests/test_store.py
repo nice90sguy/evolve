@@ -142,8 +142,7 @@ def test_import_and_assets():
             assert im.getpixel((0, 0)) == (255, 255, 255) and "prompt" in im.info
             assert json.loads(im.info["evolve"])["id"] == i
         assert st.images[i]["recipe"]["prompt"] == "hello" and st.images[i]["description"] == "hello"
-        assets = [{"name": "julie", "loras": []}]
-        asset.save_assets(assets)
+        asset.save_assets([asset.Asset(name="julie")])
         assert asset.dataset_ids(st, "julie") == [i]
         assert asset.caption("julie", "hello") == ("julie, hello", None)
         assert asset.caption("julie", "julie x")[1] is not None          # double prefix warning

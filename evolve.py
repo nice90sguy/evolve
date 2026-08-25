@@ -19,6 +19,7 @@ import argparse
 
 from aiohttp import web
 
+import asset
 import comfy_client
 import project
 from api import create_app
@@ -47,6 +48,10 @@ def main():
                          "journal: run  python tools/migrate_projects.py --root "
                          f"{root}  first (tags replaced projects, 2026-08-25)")
     store = Store(root)
+    try:
+        asset.load_assets()          # fail fast on a pre-family assets.json
+    except asset.AssetsFormatError as e:
+        raise SystemExit(str(e))
     app = create_app(store, embed_workflow=args.embed_workflow)
     print(f"root:  {root}  ({len(store.alive_ids())} images, "
           f"{len(store.words())} words)")

@@ -19,13 +19,14 @@ import _cli  # noqa: F401
 
 import lora_train
 from comfy_client import free_vram_quietly
+from model_family import MODEL_FAMILY_NAMES
 from lora_train.common import TrainError, unix_path
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--family", default="zimage", choices=sorted(lora_train.TRAINERS))
+    ap.add_argument("--family", default="zimage", choices=MODEL_FAMILY_NAMES)
     ap.add_argument("--name", required=True, help="LoRA name = trigger word")
     ap.add_argument("--dataset", required=True, help="folder of images + .txt captions")
     ap.add_argument("--out-dir", required=True, help="LoRA library root (<root>/loras)")
@@ -41,8 +42,8 @@ def main():
     ok, why = trainer.available()
     if not ok:
         sys.exit(f"{a.family}: {why}")
-    out = Path(a.out_dir).expanduser().resolve() / a.name
-    logs = out / "logs"
+    out = Path(a.out_dir).expanduser().resolve() / a.name / a.family   # loras/<name>/<family>/
+    logs = out.parent / "logs"
     logs.mkdir(parents=True, exist_ok=True)
     log_path = logs / f"{a.name}_{__import__('time').strftime('%Y%m%d-%H%M%S')}.log"
     print(f"raw log: tail -f {unix_path(log_path)}")

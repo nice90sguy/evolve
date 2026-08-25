@@ -276,9 +276,7 @@ function render() {
     fs.innerHTML = Object.entries(S.families).map(([k, f]) => `<option value="${k}">${f.label}</option>`).join('');
     fs.value = S.families[c.family] ? c.family : 'klein';
     $('#steps').value = c.steps || ''; $('#cfg').value = c.cfg || '';
-    const lsel = $('#lora');
-    lsel.innerHTML = '<option value="">(none)</option>' + S.loras.map(l => `<option>${l}</option>`).join('');
-    lsel.value = S.loras.includes(c.lora) ? c.lora : '';
+    fillLoras(c.lora);
     $('#lstr').value = c.lora_strength; $('#lock').value = c.lock;
     $('#vary').value = c.vary; $('#varyv').textContent = c.vary;
     $('#width').value = c.width; $('#height').value = c.height;
@@ -378,6 +376,12 @@ function renderAssets() {
   });
 }
 function trainUI() {
+  const tf = $('#trainfam');
+  if (S && !tf.dataset.built) {   // trainable families come from the server
+    tf.dataset.built = '1';
+    tf.innerHTML = Object.entries(S.families).filter(([, f]) => f.trainable)
+      .map(([k, f]) => `<option value="${k}">${f.label}</option>`).join('');
+  }
   const t = S && S.train;
   const running = !!(t && t.running);
   $('#maketrain').disabled = running || !!(S && S.busy);
@@ -927,23 +931,38 @@ function syncHistory() {
 }
 // family is a fiat-only choice: live while ref0 + ref slots are empty
 // (references exist only in the Klein graph; the stage may hold anything)
+// the model family in force: Klein on Derive, the dropdown on Create
+function activeFamily() {
+  const fam = activeTab() === 'derive' ? 'klein' : ($('#family').value || 'klein');
+  return S && S.families[fam] ? fam : 'klein';
+}
+// LoRAs are specific to their model: the dropdown only ever lists the
+// active family's (S.loras is {family: [entries]})
+function fillLoras(want) {
+  const lsel = $('#lora');
+  const opts = (S.loras && S.loras[activeFamily()]) || [];
+  const cur = want !== undefined ? want : lsel.value;
+  lsel.innerHTML = '<option value="">(none)</option>' + opts.map(l => `<option>${l}</option>`).join('');
+  lsel.value = opts.includes(cur) ? cur : '';
+}
 function familyUI() {
   // v3: the TAB is the fiat gate - the dropdown is always live on Create,
   // and Derive is Klein by construction (no dropdown there at all)
   if (!S) return;
-  const fam = activeTab() === 'derive' ? 'klein' : ($('#family').value || 'klein');
+  const fam = activeFamily();
   const f = S.families[fam] || S.families.klein;
+  if (!$('#controls').contains(document.activeElement)) fillLoras();
   $('#steps').placeholder = f.steps; $('#cfg').placeholder = f.cfg;
   // Klein ignores its -ive prompt: only models that read it show the box
   $('#negative').style.display = (activeTab() === 'create' && fam !== 'klein') ? '' : 'none';
   // white bg is a Flux-only mechanism (prompt prefix): off-screen otherwise.
   // The eventual solution is the user-editable boilerplate-vars table.
   $('#whitebg').parentElement.style.display = fam === 'klein' ? '' : 'none';
-  const noLora = activeTab() === 'create' && fam === 'illustrious';
+  const noLora = !f.lora;                    // the family says whether it takes one
   $('#lora').parentElement.classList.toggle('off', noLora);
   $('#lstr').parentElement.classList.toggle('off', noLora);
 }
-$('#family').addEventListener('change', () => { $('#steps').value = ''; $('#cfg').value = ''; familyUI(); saveControls(); });
+$('#family').addEventListener('change', () => { $('#steps').value = ''; $('#cfg').value = ''; fillLoras(''); familyUI(); saveControls(); });
 ['create', 'derive', 'camera'].forEach(t => $('#outputs_' + t).addEventListener('change', () => {
   if (activeTab() === t) act('slots', {slots: +$('#outputs_' + t).value || 1});
 }));

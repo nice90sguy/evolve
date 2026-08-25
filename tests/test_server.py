@@ -68,6 +68,7 @@ def main():
         snap = state()
         assert snap["all_ids"] == [A, X, k] and snap["words"] == {"softlock": 3}
         assert snap["settings"]["default_tags"] == ["softlock"] and snap["tags"][str(k)] == ["softlock"]
+        assert sorted(snap["loras"]) == ["illustrious", "klein", "zimage"] and snap["families"]["klein"]["lora"] is True
         s, r = post("/api/settings", {"default_tags": ["softlock", " julie ", "bad word", ""]})
         assert r["default_tags"] == ["softlock", "julie"], r
         s, r = post("/api/tag", {"id": X, "add": ["freddy"], "cascade": True})
@@ -105,11 +106,18 @@ def main():
         assert s == 400 and "empty dataset" in r["error"], r
         s, r = post("/api/tag", {"id": A, "add": ["lora_dataset_julie"], "remove": ["archived"]})
         s, r = post("/api/train", {"name": "julie", "family": "illustrious"})
-        assert s == 200, r
-        time.sleep(1.0)
-        snap = state()
-        assert snap["train"] and not snap["train"]["running"] and "kohya" in snap["train"]["error"], snap["train"]
-        assert (rt / "_train" / "julie" / f"{A}.txt").read_text(encoding="utf-8") == "julie, eve"
+        assert s == 400 and "not trainable" in r["error"], r       # validated before anything runs
+        s, r = post("/api/train", {"name": "julie", "family": "sdxl"})
+        assert s == 400 and "family" in r["error"], r
+        s, r = post("/api/generate", {"op": "create", "family": "zimage", "lora_strength": 99})
+        assert s == 400 and "lora_strength" in r["error"], r
+        s, r = post("/api/asset", {"op": "add_lora", "name": "julie", "path": "loras/julie/x.safetensors"})
+        assert s == 400 and "loras/<asset>/<family>/" in r["error"], r
+        (rt / "loras" / "julie" / "klein").mkdir(parents=True)
+        (rt / "loras" / "julie" / "klein" / "julie_v001_comfy.safetensors").write_bytes(b"x")
+        s, r = post("/api/asset", {"op": "add_lora", "name": "julie", "path": "loras/julie/klein/julie_v001_comfy.safetensors"})
+        assert s == 200 and r["assets"][0]["loras"] == [{"path": "loras/julie/klein/julie_v001_comfy.safetensors", "family": "klein"}], r
+        assert state()["loras"]["klein"] == ["julie"] and state()["loras"]["zimage"] == []
         s, r = post("/api/controls", {"prompt": "saved", "bogus": 1})
         snap = state()
         assert snap["controls"]["prompt"] == "saved" and "bogus" not in snap["controls"]

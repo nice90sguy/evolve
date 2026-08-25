@@ -31,6 +31,7 @@ import _cli  # noqa: F401
 from PIL import Image
 
 import project
+from asset import family_of_lora_path
 from image_file import IMAGE_EXTS, flattened_rgb, sha1_of, text_chunks
 from image_meta import glean_recipe
 from image_utils import has_alpha
@@ -201,6 +202,7 @@ def migrate(root):
                     report.append(f"  #{i}: kept description {store.images[i]['description']!r}, "
                                   f"asset {a['name']} said {d!r}")
     project.write_json(root / "assets.json", new_assets)
+    report.extend(migrate_loras(root))
     for h in hist_events:
         store.hist_append(h)
     store.save_state()
@@ -211,6 +213,62 @@ def migrate(root):
     report.append(f"done: {len(store.alive_ids())} images, words: "
                   + ", ".join(f"{w} x{n}" for w, n in sorted(store.words().items())))
     report.append(f"old project dirs moved to {mig}")
+    return report
+
+
+def migrate_loras(root):
+    """loras/<asset>/*.safetensors -> loras/<asset>/<family>/ (family read
+    from each file's own metadata), and assets.json entries -> {path,
+    family}. Idempotent: files already under a family dir are left alone;
+    .bak files travel with their file; logs/ stays."""
+    from lora_train.common import detect_family
+    root = Path(root)
+    report = []
+    raw = project.read_json(root / "assets.json", [])
+    moved = {}
+    lr = root / "loras"
+    for adir in sorted(lr.iterdir()) if lr.is_dir() else []:
+        if not adir.is_dir():
+            continue
+        for f in sorted(adir.glob("*.safetensors")):
+            fam = detect_family(f)
+            if fam is None:
+                report.append(f"  ?? {f.relative_to(root).as_posix()}: family unknown, left in place")
+                continue
+            dest = adir / fam.value / f.name
+            dest.parent.mkdir(exist_ok=True)
+            shutil.move(str(f), str(dest))
+            bak = f.with_suffix(f.suffix + ".bak")
+            if bak.exists():
+                shutil.move(str(bak), str(dest.with_suffix(dest.suffix + ".bak")))
+            moved[f.relative_to(root).as_posix()] = (dest.relative_to(root).as_posix(), fam.value)
+            report.append(f"  {f.name} -> {adir.name}/{fam.value}/")
+    out = []
+    for a in raw:
+        entries = []
+        for e in a.get("loras") or []:
+            if isinstance(e, dict):
+                entries.append(e)
+                continue
+            rel = str(e).replace("\\", "/")
+            if rel in moved:
+                path, fam = moved[rel]
+            else:
+                path = rel
+                famv = family_of_lora_path(rel)
+                if famv is None:
+                    q = root / rel
+                    famd = detect_family(q) if q.is_file() else None
+                    if famd is None:
+                        report.append(f"  asset {a['name']}: {rel} dropped (file/family unknown)")
+                        continue
+                    fam = famd.value
+                else:
+                    fam = famv.value
+            entries.append({"path": path, "family": fam})
+        out.append({"name": a["name"], "loras": entries})
+    project.write_json(root / "assets.json", out)
+    report.append(f"assets.json: {len(out)} asset(s), per-family LoRA entries")
     return report
 
 
@@ -233,9 +291,17 @@ def main():
     ap.add_argument("--root", required=True)
     ap.add_argument("--scan", help="folder of alien images to absorb (instead of migrating)")
     ap.add_argument("--tag", action="append", default=[], help="word(s) to put on scanned images")
+    ap.add_argument("--loras", action="store_true",
+                    help="only move loras/<asset>/*.safetensors into per-family subdirs "
+                         "and rewrite assets.json entries as {path, family}")
     a = ap.parse_args()
     project.set_root(a.root)
-    report = scan(a.root, a.scan, a.tag) if a.scan else migrate(a.root)
+    if a.loras:
+        report = migrate_loras(a.root)
+    elif a.scan:
+        report = scan(a.root, a.scan, a.tag)
+    else:
+        report = migrate(a.root)
     print("\n".join(report))
 
 

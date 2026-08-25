@@ -232,3 +232,32 @@ class Trainer:
     def comfy_path(self, native):
         native = Path(native)
         return native.with_name(native.stem + "_comfy.safetensors")
+
+
+def detect_family(path):
+    """Which model a .safetensors LoRA belongs to, from its OWN metadata
+    (musubi writes ss_network_module / ss_base_model_version) with a key-
+    name sniff as fallback. Returns a ModelFamily or None. Used only to migrate
+    files into loras/<asset>/<family>/ - at use time the directory and the
+    asset entry are the authority."""
+    from model_family import ModelFamily
+    from safetensors import safe_open
+    with safe_open(str(path), "np") as f:      # metadata + key names only, no torch
+        md = f.metadata() or {}
+        keys = list(f.keys())
+    mod = (md.get("ss_network_module") or "").lower()
+    base = (md.get("ss_base_model_version") or md.get("modelspec.architecture") or "").lower()
+    if "flux_2" in mod or "flux_2" in base or "flux.2" in base:
+        return ModelFamily.KLEIN
+    if "zimage" in mod or "z_image" in base or "zimage" in base:
+        return ModelFamily.ZIMAGE
+    if "sdxl" in base or "stable-diffusion-xl" in base:
+        return ModelFamily.ILLUSTRIOUS
+    sample = " ".join(keys[:50])
+    if "double_blocks" in sample and "img_attn" in sample:
+        return ModelFamily.KLEIN
+    if "lora_unet_layers" in sample or "diffusion_model.layers" in sample:
+        return ModelFamily.ZIMAGE
+    if "input_blocks" in sample or "lora_unet_input_blocks" in sample:
+        return ModelFamily.ILLUSTRIOUS
+    return None

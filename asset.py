@@ -1,30 +1,93 @@
-"""asset.py - assets are DATA (v4), now just a name and its LoRAs.
+"""asset.py - assets are DATA (v4): a name and its LoRAs, per model family.
 
-<root>/assets.json = [{name, loras: [root-relative paths]}]. The training
-DATASET is the word `lora_dataset_<name>` on images (unarchived); the
-caption is the image's own description with the trigger prefixed at sync
-time (`<name>, <description>`; bare `<name>` if empty). Names double as
-the LoRA trigger and are never auto-decorated.
+<root>/assets.json = [{name, loras: [{path, family}]}]. `path` is root-
+relative posix and lives at loras/<name>/<family>/<file>.safetensors -
+the family is recorded explicitly AND must agree with the directory (a
+LoRA is specific to its model; the dropdown only ever offers the active
+family's). Legacy bare-string entries are rejected at load with a pointer
+to the migration tool. The training DATASET is the word
+`lora_dataset_<name>` on images (unarchived); the caption is the image's
+description with the trigger prefixed at sync time.
 """
-from project import is_valid_name, read_json, root, root_rel, write_json
+from typing import List
+
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+
+from model_family import ModelFamily, parse_model_family
+from project import NAME_RE, is_valid_name, read_json, root, root_rel, write_json
 
 DATASET_PREFIX = "lora_dataset_"
 
 
+def lora_dir(name, family):
+    return root() / "loras" / name / parse_model_family(family).value
+
+
+def family_of_lora_path(rel):
+    """loras/<asset>/<family>/<file> -> ModelFamily, else None."""
+    parts = str(rel).replace("\\", "/").split("/")
+    if len(parts) == 4 and parts[0] == "loras":
+        try:
+            return parse_model_family(parts[2])
+        except ValueError:
+            return None
+    return None
+
+
+class LoraEntry(BaseModel):
+    path: str
+    family: ModelFamily
+
+    @model_validator(mode="after")
+    def _dir_agrees(self):
+        fam = family_of_lora_path(self.path)
+        if fam is None:
+            raise ValueError(f"{self.path}: LoRA files live at loras/<asset>/<family>/")
+        if fam != self.family:
+            raise ValueError(f"{self.path}: directory says {fam}, entry says {self.family}")
+        return self
+
+
+class Asset(BaseModel):
+    name: str = Field(pattern=NAME_RE.pattern)
+    loras: List[LoraEntry] = Field(default_factory=list)
+
+    @field_validator("name")
+    @classmethod
+    def _valid_name(cls, v):
+        if not is_valid_name(v):
+            raise ValueError(f"bad asset name {v!r}")
+        return v
+
+    def loras_for(self, family):
+        fam = parse_model_family(family)
+        return [e for e in self.loras if e.family == fam]
+
+
+class AssetsFormatError(RuntimeError):
+    pass
+
+
 def load_assets():
+    """[Asset]. Raises AssetsFormatError on a pre-family file."""
+    raw = read_json(root() / "assets.json", [])
     out = []
-    for a in read_json(root() / "assets.json", []):
-        if a.get("name"):
-            out.append({"name": a["name"], "loras": list(a.get("loras") or [])})
+    for a in raw:
+        try:
+            out.append(Asset.model_validate(a))
+        except ValidationError as e:
+            raise AssetsFormatError(
+                f"assets.json entry {a.get('name')!r} is not in the per-family format "
+                f"({e.errors()[0].get('msg')}); run tools/migrate_projects.py --loras") from e
     return out
 
 
 def save_assets(assets):
-    write_json(root() / "assets.json", [{"name": a["name"], "loras": a["loras"]} for a in assets])
+    write_json(root() / "assets.json", [a.model_dump(mode="json") for a in assets])
 
 
 def find_asset(assets, name):
-    return next((a for a in assets if a.get("name") == name), None)
+    return next((a for a in assets if a.name == name), None)
 
 
 def dataset_tag(name):
@@ -46,20 +109,22 @@ def caption(name, description):
     return (f"{name}, {d}" if d else name), warn
 
 
-def append_lora(name, rel):
+def append_lora(name, rel, family):
     """Record a freshly trained LoRA on its asset (persisted)."""
     assets = load_assets()
     a = find_asset(assets, name)
-    if a is not None and rel not in a["loras"]:
-        a["loras"].append(rel)
+    if a is None:
+        return False
+    entry = LoraEntry(path=rel, family=parse_model_family(family))
+    if not any(e.path == rel for e in a.loras):
+        a.loras.append(entry)
         save_assets(assets)
-    return a is not None
+    return True
 
 
-def apply_op(assets, op, name, path=None):
+def apply_op(assets, op, name, path=None, family=None):
     """create / delete / add_lora on the list, in place. Returns an error
-    message or None. (Dataset membership and descriptions are tag /
-    describe operations on images, not asset operations.)"""
+    message or None."""
     a = find_asset(assets, name)
     if op == "create":
         if not is_valid_name(name):
@@ -67,7 +132,7 @@ def apply_op(assets, op, name, path=None):
                     "letters, digits, - _, no spaces)")
         if a:
             return f"asset {name!r} exists"
-        assets.append({"name": name, "loras": []})
+        assets.append(Asset(name=name))
         return None
     if a is None:
         return f"no asset {name!r}"
@@ -79,7 +144,14 @@ def apply_op(assets, op, name, path=None):
             rel = root_rel(path)
         except Exception:
             return "path outside the root"
-        if rel not in a["loras"]:
-            a["loras"].append(rel)
+        fam = family or family_of_lora_path(rel)
+        if fam is None:
+            return f"{rel}: LoRA files live at loras/<asset>/<family>/"
+        try:
+            entry = LoraEntry(path=rel, family=parse_model_family(fam))
+        except (ValueError, ValidationError) as e:
+            return f"bad LoRA entry: {e}"
+        if not any(e.path == rel for e in a.loras):
+            a.loras.append(entry)
         return None
     return f"bad op {op!r}"

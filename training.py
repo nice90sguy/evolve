@@ -4,29 +4,47 @@
             <root>/_train/<name>/<id>.png + <id>.txt (caption = trigger
             prefixed to the image's description, AT SYNC TIME);
             copy-new / delete-dropped / skip-unchanged.
-    train:  lora_train.get_trainer(family).train(...) -> <root>/loras/<name>/
-    record: the _comfy file is appended to the asset's loras[].
+    train:  lora_train.get_trainer(family).train(...) ->
+            <root>/loras/<name>/<family>/   (a LoRA is specific to its model)
+    record: the _comfy file is appended to the asset's loras[] WITH its family.
 
-The user's click IS the say-so (red line 4). One GPU: mutually exclusive
-with Generate in both directions (jobs.py).
+TrainConfig is a validated pydantic model: an unknown or untrainable family
+is refused before anything runs. The user's click IS the say-so (red line
+4). One GPU: mutually exclusive with Generate in both directions (jobs.py).
 """
 import shutil
 import subprocess
-from dataclasses import dataclass
+from typing import Optional
+
+from pydantic import BaseModel, Field, field_validator
 
 import lora_train
-from asset import append_lora, caption, dataset_ids
+from asset import append_lora, caption, dataset_ids, lora_dir
 from comfy_client import free_vram_quietly
+from model_family import ModelFamily, family_info
 from lora_train import common
 from lora_train.common import unix_path
-from project import root
+from project import is_valid_name, root
 
 
-@dataclass
-class TrainConfig:
+class TrainConfig(BaseModel):
     asset: str
-    family: str = "zimage"
-    steps: int = None        # None = the trainer's default (400)
+    family: ModelFamily = ModelFamily.ZIMAGE
+    steps: Optional[int] = Field(None, gt=0, le=100_000)   # None = the trainer's default
+
+    @field_validator("asset")
+    @classmethod
+    def _valid_name(cls, v):
+        if not is_valid_name(v):          # pydantic `pattern` is a search, not a full match
+            raise ValueError(f"bad asset name {v!r}")
+        return v
+
+    @field_validator("family")
+    @classmethod
+    def _trainable(cls, v):
+        if not family_info(v).trainable:
+            raise ValueError(f"{v} is not trainable here")
+        return v
 
 
 def train_dir(name):
@@ -73,7 +91,7 @@ def do_training(cfg):
     if not ok:
         raise common.TrainError(why)
     ds = train_dir(cfg.asset)
-    out = root() / "loras" / cfg.asset
+    out = lora_dir(cfg.asset, cfg.family)
     lp = log_path(cfg.asset)
     print(f"raw log: tail -f {unix_path(lp)}")
     free_vram_quietly()
@@ -82,8 +100,8 @@ def do_training(cfg):
                                out, log)
         comfy = trainer.to_comfy(native, log)
     rel = comfy.relative_to(root()).as_posix()
-    append_lora(cfg.asset, rel)
-    print(f"training done: {comfy.name} -> asset {cfg.asset}")
+    append_lora(cfg.asset, rel, cfg.family)
+    print(f"training done: {comfy.name} -> asset {cfg.asset} [{cfg.family}]")
     return rel
 
 

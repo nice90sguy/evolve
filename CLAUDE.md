@@ -758,6 +758,35 @@ behaviour they record is unchanged (builders verified byte-identical).
   same features), `api_to_ui.py`, README with the manual curl-level steps,
   and the original experiment payloads.
 
+## Model family & validation — BUILT 2026-08-25
+
+`model_family.py` is the ONE definition of the closed model set:
+`ModelFamily` (str Enum: klein / zimage / illustrious), `ModelFamilyInfo`
+(label, steps, cfg, references, lora, trainable), `parse_model_family()`
+(the single validator), `model_families_for_ui()`. Nothing else may spell
+a family as a bare string except recipes/JSON on disk (values equal the
+enum values). Configs are **pydantic** models, validated at the HTTP edge
+(a `ValidationError` -> one readable 400 via `api.invalid()`):
+`GenerateConfig` (op literal, family, ranges: lora_strength 0-4, vary
+0-0.5, w/h 16..4096 multiple of 16, steps 0-200, cfg 0-30; Derive is
+Klein-only, refs need a references-family, a LoRA needs a lora-family),
+`CameraConfig` (axis tokens validated against the vocab, >=1 axis),
+`TrainConfig` (asset name rule, family must be TRAINABLE - illustrious is
+refused before anything runs; NB pydantic `pattern` is a search, use a
+validator for full-match), `asset.Asset`/`LoraEntry`. **A LoRA is specific
+to its model**: files live at `<root>/loras/<asset>/<family>/*.safetensors`,
+`assets.json` = `[{name, loras: [{path, family}]}]` (family recorded AND
+must agree with the directory), the dropdown is `{family: [entries]}` and
+only shows the active family's, `resolve_lora(name, family)` = newest of
+the asset's LoRAs FOR THAT FAMILY, trainers write into the family subdir.
+`lora_train.common.detect_family()` reads a file's own metadata
+(`ss_network_module` / `ss_base_model_version`, key-name sniff fallback) -
+migration only; `tools/migrate_projects.py --loras` moved the user's files
+(BOTH gene_tierney and lizabeth_scott are Klein bakes per their metadata -
+`flux_2_klein_9b`; lizabeth was NOT a Z-Image LoRA). A pre-family
+assets.json makes evolve.py refuse to start with the pointer.
+`tests/test_model_family.py` covers all of it.
+
 ## Tags & views — BUILT 2026-08-25 (spec below, as agreed; v1)
 
 Build notes: `project.py` = root + settings only (no projects); `store.py`
