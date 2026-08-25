@@ -818,11 +818,12 @@ candidates/WI/ref0/refs/history/busy are NOT.
   tag, see its carousel - and for THIS round the `archived` view is
   INCLUDED so the user can inspect the trash; NO view implies `!archived`
   in v1 - every view shows everything carrying its word (user decision
-  2026-08-25). Sort by id. The Info popup (right-click) gets a READ-ONLY
-  row listing the image's tags - the user wants to SEE tags in use before
-  testing; the chip editor (add/remove, autocomplete, "tag everything in
-  this view") is the step after. Tags reach images in v1 only via
-  migration seeding, birth copy and default tags.
+  2026-08-25). Sort by id. The Info popup (right-click) gets the tag
+  EDITOR in v1 (retracted "read-only row": untestable without editing):
+  chips with add/remove, autocomplete over words in use, the
+  "apply to descendants" checkbox. NO protected words - `archived` and
+  `pinned` are editable like any other ("let me break things if I'm that
+  stupid", user). "Tag everything in this view" can follow.
   Expression views (`julie & !possible`, `lora_dataset_*`) come next as
   boolean-over-globs - NOT JS regexes, so no regex box is exposed (user:
   only expose it if regexes were the natural implementation; they are
