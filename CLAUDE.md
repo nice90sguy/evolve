@@ -758,6 +758,52 @@ behaviour they record is unchanged (builders verified byte-identical).
   same features), `api_to_ui.py`, README with the manual curl-level steps,
   and the original experiment payloads.
 
+## Places — SPECCED 2026-08-25, NOT BUILT (wait for the user's go)
+
+Fresh model, not a modification of tags (user: "don't get there from
+here"). Three orthogonal axes, never overlapping:
+  PLACE  = where an image LIVES: exactly one path in a real OS directory
+           tree under the root ("one image, one place"; the filesystem
+           enforces it; Explorer is a legitimate second UI).
+  SETS   = tags: "show me" only, never "where is it". Views, datasets
+           (`lora_dataset_<name>` IS a set - no third mechanism), cascade,
+           the editor: all unchanged.
+  BITS   = attributes of an image unrelated to path or sets: `pinned`.
+- **Tree.** `<root>/<any/dirs>/<id>.png` (optionally `<id>_<slug>.png`;
+  the id in the filename is identity, sha1 the fallback). Reserved:
+  `<root>/.trash/` (archived = lives under .trash - a PLACE again, the
+  right answer in a filesystem model; the archived bit built today
+  collapses into a path test), `loras/`, `_train/`, `_debug/`,
+  `_migrated/`. Journal stays the sole authority for identity, recipe and
+  lineage; the filesystem is the authority for place. Bytes immutable;
+  location mutable.
+- **Context = the current folder.** A tree browser on the LEFT (like
+  Genealogy): the selected folder is the working directory. Fiat images
+  land in the current folder; bred images land in their MOTHER's folder
+  (the analogue of copy-at-birth); Camera likewise. Moving = drag in the
+  tree (or in Explorer). Default tags unchanged.
+- **Two authorities, reconciled.** The app journals its own moves
+  (`move {id, from, to}`). On startup and on a Rescan button it walks the
+  tree: id-in-filename first, sha1 fallback; an external move -> `moved`
+  event; a file the app has never seen -> IMPORTED in place (default
+  tags, recipe gleaned; that is the scan tool folded in); a journaled
+  image whose file is gone -> `missing` (the journal never forgets; shows
+  as a placeholder until it reappears or is purged). Store sha1 for
+  generated images too (one line) so the fallback works everywhere.
+- **User-facing rule (user's words):** "You can break things if you
+  delete files inside the root directory, but if you want to add them,
+  go ahead, evolve will import them so you can track them properly."
+- **What changes in code:** `Store.path(i)` reads a location map
+  (id -> relative path) instead of `images/<id>.png`; `is_archived` =
+  under .trash; archive/restore = move; purge = delete under .trash (same
+  closure rule); staging hardlinks unaffected (same inode); `/img/<id>`
+  unaffected; tags/views/editor untouched; LoRA page = dataset view +
+  Make LoRA; migration puts the current 29 flat images somewhere sensible
+  (e.g. `imports/` or by their current words) - trivial at this size.
+- **Path taxonomy vs tag paths:** the `julie:headshots:smiling` idea is
+  SUPERSEDED for organisation by real directories; `:` words remain
+  possible as pure set names (prefix views are browsing-only).
+
 ## Tags doctrine, settled 2026-08-25 (after building v1)
 
 **"Don't go crazy with tags unless they make the code more maintainable;
