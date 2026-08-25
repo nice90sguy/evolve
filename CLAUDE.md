@@ -800,6 +800,17 @@ here"). Three orthogonal axes, never overlapping:
   unaffected; tags/views/editor untouched; LoRA page = dataset view +
   Make LoRA; migration puts the current 29 flat images somewhere sensible
   (e.g. `imports/` or by their current words) - trivial at this size.
+- **UI direction for the build (user's hint, 2026-08-25 evening; a mock
+  follows after they have played with the app):** menu bar at the top
+  (they'd prefer left on a widescreen), directory tree on the LEFT. The
+  app works in MODES: **evolve** - the tree hides, the files of the cwd
+  appear as the top carousel, otherwise what exists now; **loras** - a
+  folder in the tree is MARKED as a LoRA (e.g. an "L"); selecting it
+  switches the workspace to LoRA management (training); **browser**
+  (possibly) - a derivative of the carousel; **story** - keyframes,
+  dialog, transitions/dissolves, tweens, decision points (menus /
+  branching). The carousel + A/B against the working image is THE key
+  usability feature; keep it central. Decide with the mock, then build.
 - **Path taxonomy vs tag paths:** the `julie:headshots:smiling` idea is
   SUPERSEDED for organisation by real directories; `:` words remain
   possible as pure set names (prefix views are browsing-only).
