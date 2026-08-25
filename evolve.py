@@ -1,12 +1,14 @@
 """evolve - a virtual production studio: images bred by selective breeding
 with auditable heredity, driving ComfyUI headlessly.
 
-    python evolve.py --root D:/evolve_root [--project NAME] [--port 8189]
+    python evolve.py --root D:/evolve_root [--port 8189]
 
---root is the GLOBAL root (mandatory - nothing depends on the shell's
-cwd): projects are subdirs, assets.json / loras / _train / _debug live
-beside them. ComfyUI must already be running at 127.0.0.1:8188; it is
-never launched or killed from here. Generation happens only on your click.
+--root is the ONE store (mandatory - nothing depends on the shell's cwd):
+images/, journal.jsonl, state.json, config.json, assets.json, loras/,
+_train/, _debug/. Images are grouped, filtered and given meaning by TAGS;
+there are no project subdirectories. ComfyUI must already be running at
+127.0.0.1:8188; it is never launched or killed from here. Generation
+happens only on your click.
 
 Layout of this package: api.py (HTTP) -> generate/camera/training
 (operators) -> store/trash/asset/lineage/lora (data) -> build_payload +
@@ -20,18 +22,13 @@ from aiohttp import web
 import comfy_client
 import project
 from api import create_app
-from store import open_project
+from store import Store
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--root", required=True,
-                    help="the GLOBAL root: projects are subdirs, assets and "
-                         "app config live beside them")
-    ap.add_argument("--project", default=None,
-                    help="project to open (default: config.json last_project, "
-                         "else the first existing project, else 'default')")
+    ap.add_argument("--root", required=True, help="the store root")
     ap.add_argument("--port", type=int, default=8189)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--embed-workflow", action="store_true",
@@ -43,15 +40,17 @@ def main():
     comfy_client.configure_console()
     root = project.set_root(args.root)
     comfy_client.DEBUG_DIR = root / "_debug"
-    name = args.project or project.load_config().get("last_project")
-    if not name or not (root / name).is_dir():
-        existing = project.list_projects()
-        name = existing[0] if existing else "default"
-    store = open_project(name)
+    old = [d.name for d in root.iterdir()
+           if d.is_dir() and (d / "images").is_dir() and d.name != "images"]
+    if old and not (root / "journal.jsonl").exists():
+        raise SystemExit(f"{root} holds project subdirs ({', '.join(old)}) but no root "
+                         "journal: run  python tools/migrate_projects.py --root "
+                         f"{root}  first (tags replaced projects, 2026-08-25)")
+    store = Store(root)
     app = create_app(store, embed_workflow=args.embed_workflow)
-    print(f"root:    {root}")
-    print(f"project: {name}  ({len(store.alive_ids())} images)")
-    print(f"open:    http://{args.host}:{args.port}/")
+    print(f"root:  {root}  ({len(store.alive_ids())} images, "
+          f"{len(store.words())} words)")
+    print(f"open:  http://{args.host}:{args.port}/")
     print("(ComfyUI must be running at 127.0.0.1:8188 before you generate)")
     web.run_app(app, host=args.host, port=args.port, print=None)
 

@@ -1,25 +1,25 @@
-"""project.py - the global ROOT and the projects under it (architecture v4).
+"""project.py - the ROOT: one store, one journal, one state, app settings.
 
-    <root>/config.json        app-level config (last_project, colors, ...)
-    <root>/assets.json        the asset list (see asset.py)
-    <root>/loras/<name>/      trained LoRAs      (reserved)
-    <root>/_train/<name>/     transient datasets (reserved)
-    <root>/_debug/            last_payload.json  (reserved)
-    <root>/<project>/         images/NNN.png + journal.jsonl + state.json + archive/
+    <root>/images/NNN.png       every image (ids global, never reused)
+    <root>/journal.jsonl        append-only: image / tag / describe / hist / purge
+    <root>/state.json           the live UI state
+    <root>/config.json          app settings (default_tags, ...)
+    <root>/assets.json          [{name, loras[]}]  (see asset.py)
+    <root>/loras/<name>/        trained LoRAs
+    <root>/_train/<name>/       transient datasets
+    <root>/_debug/              last_payload.json
 
-A PROJECT is just a subdir; opening one has a single effect: the path
-context. `<project>/<id>` is the global image name. NO uids anywhere.
-The root is set ONCE per process (singleton contract: one server, one
-root, one open project) and nothing here depends on the shell's cwd.
+Tags replaced projects (2026-08-25): there are no subdirectories of images
+and no archive dir - files never move. The root is set ONCE per process
+and nothing here depends on the shell's cwd.
 """
 import json
 import re
 from pathlib import Path
 
-RESERVED = {"assets", "loras", "_train", "_debug"}   # never project names
 NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
-PALETTE_SIZE = 8
-SHARED_ASSETS = "shared_assets"     # reserved project name, amber tint
+TAG_RE = re.compile(r"[^\s,]{1,64}")          # a word: no whitespace, no commas
+DEFAULT_SETTINGS = {"default_tags": []}
 
 _ROOT = None
 
@@ -39,7 +39,7 @@ def root():
     return _ROOT
 
 
-# ---------- tiny json-file helpers (the read/write cadence) ----------
+# ---------- tiny json-file helpers ----------
 
 def read_json(path, default):
     try:
@@ -52,12 +52,25 @@ def write_json(path, data, indent=1):
     Path(path).write_text(json.dumps(data, indent=indent), encoding="utf-8")
 
 
-# ---------- names & paths ----------
+# ---------- names ----------
 
 def is_valid_name(name):
-    """Project AND asset names share one rule: letters, digits, - _, no
-    spaces, never a reserved word (an asset name is also a LoRA trigger)."""
-    return bool(name) and bool(NAME_RE.fullmatch(name)) and name not in RESERVED
+    """Asset names: letters, digits, - _, no spaces (also the LoRA trigger)."""
+    return bool(name) and bool(NAME_RE.fullmatch(name))
+
+
+def is_valid_tag(word):
+    return bool(word) and bool(TAG_RE.fullmatch(word))
+
+
+def clean_tags(words):
+    """Normalise a tag list: strings, stripped, valid, deduped, order kept."""
+    out = []
+    for w in words or []:
+        w = str(w).strip()
+        if is_valid_tag(w) and w not in out:
+            out.append(w)
+    return out
 
 
 def root_rel(p):
@@ -67,56 +80,7 @@ def root_rel(p):
     return q.relative_to(root()).as_posix()
 
 
-def contained(p):
-    """Resolve p (root-relative or absolute) and require it inside the root;
-    returns the resolved Path or None."""
-    try:
-        q = (root() / p).resolve()
-        q.relative_to(root())
-        return q
-    except Exception:
-        return None
-
-
-def project_dir(name):
-    if not is_valid_name(name):
-        raise ValueError(f"bad project name {name!r}")
-    return root() / name
-
-
-def image_path(project_name, i):
-    return root() / project_name / "images" / f"{i}.png"
-
-
-def image_rel(project_name, i):
-    """The global image name: '<project>/images/<id>.png'."""
-    return f"{project_name}/images/{i}.png"
-
-
-def parse_image_ref(rel):
-    """'<project>/images/<id>.png' -> (project, id) or None."""
-    parts = str(rel).split("/")
-    if len(parts) != 3 or parts[1] != "images" or not parts[2].endswith(".png"):
-        return None
-    try:
-        return parts[0], int(parts[2][:-4])
-    except ValueError:
-        return None
-
-
-def list_projects():
-    """A project is any root subdir that looks like one (has images/ or a
-    journal). Reserved names and dot-dirs are never projects."""
-    out = []
-    for d in sorted(root().iterdir()):
-        if not d.is_dir() or d.name in RESERVED or d.name.startswith("."):
-            continue
-        if (d / "images").is_dir() or (d / "journal.jsonl").exists():
-            out.append(d.name)
-    return out
-
-
-# ---------- config ----------
+# ---------- settings ----------
 
 def load_config():
     return read_json(root() / "config.json", {})
@@ -128,18 +92,19 @@ def save_config(**kw):
     write_json(root() / "config.json", c)
 
 
-def project_color(name):
-    """Stable tint per project: assigned on first sight (next free slot of
-    the 8-hue palette), persisted in config.json so a project keeps its
-    colour for life - never roster-order, which would reshuffle everyone's
-    colour when a project is added. shared_assets is reserved: always the
-    same amber, outside the cycle."""
-    if name == SHARED_ASSETS:
-        return "shared"
-    colors = load_config().get("colors") or {}
-    if name not in colors:
-        used = set(colors.values())
-        colors[name] = next((i for i in range(PALETTE_SIZE) if i not in used),
-                            len(colors) % PALETTE_SIZE)
-        save_config(colors=colors)
-    return colors[name]
+def load_settings():
+    """App settings with defaults filled in (default_tags: applied to every
+    image the app makes or imports)."""
+    c = load_config()
+    s = dict(DEFAULT_SETTINGS)
+    s.update({k: c[k] for k in DEFAULT_SETTINGS if k in c})
+    s["default_tags"] = clean_tags(s["default_tags"])
+    return s
+
+
+def save_settings(**kw):
+    s = {k: v for k, v in kw.items() if k in DEFAULT_SETTINGS}
+    if "default_tags" in s:
+        s["default_tags"] = clean_tags(s["default_tags"])
+    save_config(**s)
+    return load_settings()

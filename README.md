@@ -11,14 +11,26 @@ bars from ComfyUI's websocket + an elapsed heartbeat while models load).
 Fallbacks: `tail -f /d/projects/ComfyUI/user/comfyui.log`, `nvidia-smi -l 2`.
 
 ```
-python evolve.py --root D:/evolve_root [--project NAME] [--port 8189] [--embed-workflow]
+python evolve.py --root D:/evolve_root [--port 8189] [--embed-workflow]
 ```
 
 `--root` is mandatory and is the ONLY location the app depends on (nothing is
-cwd-relative). Under it: one subdir per **project** (`<project>/images/NNN.png`
-+ `journal.jsonl` + `state.json` + `archive/`), `assets.json` (assets are data:
-`{name, loras[], dataset[{path, description}]}`), `loras/<name>/`, `_train/`
-(transient datasets), `_debug/last_payload.json`, `config.json`.
+cwd-relative). Under it: `images/NNN.png` (every image, ids global),
+`journal.jsonl`, `state.json`, `config.json` (settings: `default_tags`),
+`assets.json` (`[{name, loras[]}]`), `loras/<name>/`, `_train/`, `_debug/`.
+
+**Tags.** Images are grouped, filtered and given meaning by words the user
+puts on them (`julie`, `possible`, `lora_dataset_julie`, `pinned`,
+`archived` — none protected). A bred image copies its mother's words (minus
+`archived`/`pinned`) plus the default tags; changing a parent's words can
+cascade down its mother-line descendants (ADD skips archived ones, REMOVE
+does not). Every word is a view. `archived` is a word, not a directory:
+files never move; *Purge archived* deletes the files of archived images
+that no unarchived image descends from. An asset's training dataset is the
+word `lora_dataset_<name>`; the caption is the image's own description with
+the trigger prefixed at sync time. Old project-subdir roots are converted
+by `tools/migrate_projects.py --root …` (also `--scan DIR --tag w` to absorb
+alien images).
 
 ## Layout
 
@@ -26,7 +38,7 @@ Runtime (what `evolve.py` needs), dependency order bottom-up:
 
 | module | role |
 |---|---|
-| `project.py` | the global root, projects, config, name rules, json helpers |
+| `project.py` | the root, settings, name/tag rules, json helpers |
 | `comfy_client.py` | queue / wait (live progress) / free_vram / interrupt / liveness |
 | `image_utils.py` | snap16, alpha flattening, megapixel fit, matting (`matte`, CLI) |
 | `image_file.py` | sha1, text chunks, `write_png` (metadata preserved), hardlink staging, `<prefix>NNNNN.png` output convention |
@@ -36,8 +48,8 @@ Runtime (what `evolve.py` needs), dependency order bottom-up:
 | `build_payload/` | template-driven builders, one per family (`flux_klein`, `zimage`, `illustrious`, `qwen_edit`) |
 | `controls.py` | the generator controls table (defaults, sanitise, restore-from-recipe) |
 | `store.py` | `Store`: images + journal + live state; `open_project` |
-| `trash.py` | roots, gc, discard, sweep, prune (archives, never deletes) |
-| `asset.py`, `lora.py`, `lineage.py` | assets.json CRUD; LoRA dropdown resolution; siblings/family/foreign meta |
+| `trash.py` | discard, sweep, prune, purge — in tag vocabulary |
+| `asset.py`, `lora.py`, `lineage.py` | assets `{name, loras}` + dataset word/captions; LoRA dropdown resolution; siblings/family |
 | `generate.py`, `camera.py`, `training.py` | the operators: `do_generate(GenerateConfig)`, `do_camera(CameraConfig)`, `do_training(TrainConfig)` |
 | `lora_train/` | `Trainer` interface (`common.py`) + `zimage_turbo`, `flux_klein_9b`, `illustrious` (not available yet) |
 | `jobs.py` | one-GPU job runner: busy flag, abort, training status |
@@ -56,12 +68,13 @@ package on `sys.path`):
 | `lora_test.py` | render a prompt with a LoRA (native files converted on the fly) |
 | `tween.py` | two keyframes -> video via Wan 2.2 FLF2V (two-expert handoff) |
 | `watch.py` | attach a progress bar to a run already in flight |
+| `migrate_projects.py` | pre-tags root → one tagged store; `--scan` absorbs alien images |
 | `depth_warp.py`, `quantize_te_fp8.py` | parked spikes |
 
 `tests/` - `python tests/test_store.py` (store/trash/lineage/controls),
 `test_payloads.py` (builders), `test_frontend.py` (JS parses, ids and api
 names resolve), `test_server.py` (HTTP smoke on a throwaway root, no ComfyUI
-needed). `evolve_v0.py` is the retired rows-as-generations prototype.
+needed), `test_migrate.py` (migration + scan on a synthetic old root).
 
 ## Conventions
 

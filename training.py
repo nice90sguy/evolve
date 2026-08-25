@@ -1,8 +1,9 @@
 """training.py - Make LoRA: sync the asset's dataset -> train -> record.
 
-    sync:   dataset list -> <root>/_train/<name>/ (copy-new / delete-dropped /
-            skip-unchanged); descriptions become the .txt sidecars AT SYNC
-            TIME; the trigger-prefix rule is enforced here, fail-fast.
+    sync:   images carrying `lora_dataset_<name>` (unarchived) ->
+            <root>/_train/<name>/<id>.png + <id>.txt (caption = trigger
+            prefixed to the image's description, AT SYNC TIME);
+            copy-new / delete-dropped / skip-unchanged.
     train:  lora_train.get_trainer(family).train(...) -> <root>/loras/<name>/
     record: the _comfy file is appended to the asset's loras[].
 
@@ -14,7 +15,7 @@ import subprocess
 from dataclasses import dataclass
 
 import lora_train
-from asset import append_lora
+from asset import append_lora, caption, dataset_ids
 from comfy_client import free_vram_quietly
 from lora_train import common
 from lora_train.common import unix_path
@@ -36,40 +37,30 @@ def log_path(name):
     return root() / "_train" / f"{name}.log"
 
 
-def sync_dataset(a):
-    """Asset dict -> staged dataset dir. File names are the source path
-    mangled ('/' -> '__'): deterministic, so reordering the list never
-    churns the dir. ValueError on a bad dataset."""
-    name = a["name"]
-    bad = [e["path"] for e in a["dataset"]
-           if not (e.get("description") or "").startswith(name)]
-    if bad:
-        raise ValueError("captions must START with the trigger "
-                         f"{name!r}; fix: " + ", ".join(bad[:8]))
-    missing = [e["path"] for e in a["dataset"] if not (root() / e["path"]).is_file()]
-    if missing:
-        raise ValueError("missing files: " + ", ".join(missing[:8]))
-    if not a["dataset"]:
-        raise ValueError("empty dataset")
+def sync_dataset(store, name):
+    """Dataset word -> staged dataset dir. ValueError if empty. Warnings
+    (double-prefix captions) are printed, not fatal."""
+    ids = dataset_ids(store, name)
+    if not ids:
+        raise ValueError(f"empty dataset: no unarchived image carries lora_dataset_{name}")
     ds = train_dir(name)
     ds.mkdir(parents=True, exist_ok=True)
-    want = {}
-    for e in a["dataset"]:
-        stem = e["path"].replace("/", "__")
-        stem = stem[:-4] if stem.endswith(".png") else stem
-        want[stem] = e
+    want = {str(i): i for i in ids}
     for f in ds.iterdir():                    # delete-dropped
         if f.stem not in want:
             f.unlink()
     n_copied = 0
-    for stem, e in want.items():
-        src, dst = root() / e["path"], ds / (stem + ".png")
+    for stem, i in want.items():
+        src, dst = store.path(i), ds / (stem + ".png")
         st = src.stat()
         if not (dst.exists() and dst.stat().st_size == st.st_size
                 and int(dst.stat().st_mtime) == int(st.st_mtime)):
             shutil.copy2(src, dst)
             n_copied += 1
-        (ds / (stem + ".txt")).write_text(e["description"], encoding="utf-8")
+        text, warn = caption(name, store.images[i].get("description"))
+        if warn:
+            print(f"#{i}: {warn}")
+        (ds / (stem + ".txt")).write_text(text, encoding="utf-8")
     print(f"sync {name}: {len(want)} images ({n_copied} copied)")
     return ds
 
@@ -97,9 +88,7 @@ def do_training(cfg):
 
 
 def abort_training():
-    """Kill the current trainer subprocess TREE (taskkill /T): killing only
-    the parent would orphan the GPU process. Never kill by exe path - uv
-    venvs all share one interpreter image."""
+    """Kill the current trainer subprocess TREE (taskkill /T)."""
     proc = common.CURRENT_PROC
     if proc is None or proc.poll() is not None:
         return False

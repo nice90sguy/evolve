@@ -68,22 +68,35 @@ const I = {
   grid: 'M3 3v8h8V3H3zm6 6H5V5h4v4zm-6 4v8h8v-8H3zm6 6H5v-4h4v4zm4-16v8h8V3h-8zm6 6h-4V5h4v4zm-6 4v8h8v-8h-8zm6 6h-4v-4h4v4z'
 };
 const icon = (d, sz) => `<svg viewBox="0 0 24 24" width="${sz || 18}" height="${sz || 18}" fill="currentColor" aria-hidden="true"><path d="${d}"/></svg>`;
-const imgURL = id => location.origin + '/img/' + (S ? S.project + '/' : '') + id;
+const imgURL = id => location.origin + '/img/' + id;
 
-// ---------- per-project background tint ----------
-// 8 hues 45deg apart at low saturation: same lightness as the base theme, so
-// only the cast changes - text, borders, thumbs and the accent stay put.
-const HUES = [210, 255, 300, 345, 30, 75, 120, 165];
-let appliedTint = undefined;
-function applyTint(c) {
-  const r = document.documentElement.style;
-  let h, sat = 14, satPanel = 11, dot;
-  if (c === 'shared') { h = 38; sat = 28; satPanel = 22; dot = 'hsl(38,70%,50%)'; }
-  else if (typeof c === 'number') { h = HUES[c % HUES.length]; dot = `hsl(${h},45%,50%)`; }
-  else { r.removeProperty('--bg'); r.removeProperty('--panel'); $('#projsw').style.background = '#666'; return; }
-  r.setProperty('--bg', `hsl(${h},${sat}%,11%)`);
-  r.setProperty('--panel', `hsl(${h},${satPanel}%,15%)`);
-  $('#projsw').style.background = dot;
+// ---------- views: every word is a view ----------
+// The word bar lists every word in use (+ 'all'); the view carousel shows
+// every image carrying the chosen word - archived included (v1: no implicit
+// filter anywhere, so the trash can be inspected).
+let curWord = localStorage.getItem('view:word') || '*';
+function viewIds() {
+  if (!S) return [];
+  if (curWord === '*') return S.all_ids || [];
+  return (S.all_ids || []).filter(id => (S.tags[id] || []).includes(curWord));
+}
+function renderWords() {
+  const bar = $('#wordbar');
+  const words = Object.entries(S.words || {}).sort((a, b) => a[0].localeCompare(b[0]));
+  if (curWord !== '*' && !(curWord in (S.words || {}))) curWord = '*';
+  bar.innerHTML = '';
+  const chip = (w, n, label) => {
+    const c = document.createElement('span');
+    c.className = 'chip' + (w === curWord ? ' on' : '') + (w === 'archived' ? ' arch' : '');
+    c.innerHTML = `${label || w} <span class="cnt">${n}</span>`;
+    c.title = w === '*' ? 'every image' : `images carrying the word "${w}"`;
+    c.addEventListener('click', () => { curWord = w; localStorage.setItem('view:word', w); render(); });
+    bar.appendChild(c);
+  };
+  chip('*', (S.all_ids || []).length, 'all');
+  words.forEach(([w, n]) => chip(w, n));
+  $('#viewname').textContent = curWord === '*' ? 'All' : curWord;
+  $('#viewhint').textContent = curWord === '*' ? 'every image, by number' : `every image carrying "${curWord}", by number`;
 }
 
 // ---------- named strips: ONE carousel that works anywhere ----------
@@ -100,12 +113,12 @@ const RW = ['working', 'ref', 'ref0', 'slot', 'pin'];   // the only WRITABLE con
 const LISTS = {
   hist:  () => S.history,
   pin:   () => S.pins,
-  all:   () => S.all_ids || [],
+  all:   () => viewIds(),
   gpar:  () => famData && famData.parents.map(x => x.id),
   gsib:  () => famData && famData.siblings.map(x => x.id),
   gkid:  () => famData && famData.children.map(x => x.id),
   grid:  () => (gridName && gridName !== 'grid') ? listFor(gridName) : null,
-  asset: () => { const a = curAssetObj(); return a ? a.dataset.map(e => pathToLocalId(e.path)) : null; },
+  asset: () => { const a = curAssetObj(); return a ? datasetIds(a) : null; },
 };
 function listFor(name) {
   if (!S) return null;
@@ -242,7 +255,8 @@ function render() {
   if (!S) return;
   renderCarousel('hist', S.history);
   renderCarousel('pin', S.pins);
-  renderCarousel('all', S.all_ids || []);
+  renderWords();
+  renderCarousel('all', viewIds());
   // stage
   const box = $('#stagebox'); box.innerHTML = '';
   if (S.working != null) {
@@ -278,12 +292,9 @@ function render() {
     if (c.tab && c.tab !== activeTab()) setTab(c.tab, false);
   }
   $('#seedused').textContent = S.last_base_seed ? `(last used ${S.last_base_seed})` : '';
-  if (S.color !== appliedTint) { applyTint(S.color); appliedTint = S.color; }
-  const ps = $('#projsel');
-  if (document.activeElement !== ps) {
-    ps.innerHTML = (S.projects || []).map(n => `<option>${n}</option>`).join('');
-    ps.value = S.project;
-  }
+  $('#rootname').textContent = S.root_name || '';
+  const dtg = $('#deftags');
+  if (document.activeElement !== dtg) dtg.value = ((S.settings && S.settings.default_tags) || []).join(', ');
   familyUI();
   document.querySelectorAll('.ref[data-target="ref"]').forEach((r, i) => {
     r.innerHTML = '';
@@ -321,13 +332,11 @@ $('#nav-assets').addEventListener('click', () => setMode('assets'));
 function curAssetObj() {
   return (S.assets || []).find(a => a.name === curAsset) || (S.assets || [])[0] || null;
 }
-function pathToLocalId(path) {
-  const pre = S.project + '/images/';
-  if (path.startsWith(pre) && path.endsWith('.png')) {
-    const n = +path.slice(pre.length, -4);
-    if (Number.isInteger(n)) return n;
-  }
-  return null;
+const dsTag = a => 'lora_dataset_' + a.name;
+// the dataset = every unarchived image carrying the asset's word
+function datasetIds(a) {
+  const w = dsTag(a);
+  return (S.all_ids || []).filter(id => { const t = S.tags[id] || []; return t.includes(w) && !t.includes('archived'); });
 }
 function renderAssets() {
   if (mode !== 'assets' || !S) return;
@@ -343,44 +352,27 @@ function renderAssets() {
   const g = $('#agrid');
   g.innerHTML = '';
   if (!a) { g.innerHTML = '<span class="hint">no assets yet — “+ new” creates one</span>'; return; }
-  a.dataset.forEach((e, k) => {
+  datasetIds(a).forEach((id, k) => {
     const t = document.createElement('div');
     t.className = 'atile';
     t.dataset.target = 'asset';
     t.dataset.index = k;
     t.tabIndex = 0;
-    const lid = pathToLocalId(e.path);
-    const im = document.createElement('img');
-    im.src = '/file/' + e.path;
-    im.title = e.path;
-    im.dataset.path = e.path;   // Info popup by path (works for foreign projects)
-    if (lid != null) {
-      im.dataset.id = lid;
-      im.addEventListener('dblclick', () => act('place', {id: lid, target: 'working'}));
-    } else {
-      const b = document.createElement('span');
-      b.className = 'frn';
-      b.textContent = e.path.split('/')[0];   // which project it lives in
-      t.appendChild(b);
-    }
-    im.addEventListener('error', () => {
-      const d = document.createElement('div');
-      d.className = 'gonebox';
-      d.textContent = e.path + String.fromCharCode(10) + '(missing)';
-      im.replaceWith(d);
-    });
+    const im = thumb(id);
+    im.addEventListener('dblclick', () => act('place', {id, target: 'working'}));
     const x = document.createElement('button');
     x.className = 'ax'; x.innerHTML = icon(I.close, 13);
-    x.title = 'remove from this asset (the image itself is untouched)';
-    x.addEventListener('click', () => act('asset', {op: 'remove', name: a.name, path: e.path}));
+    x.title = 'remove the dataset word from this image (the image itself is untouched)';
+    x.addEventListener('click', () => act('tag', {ids: [id], remove: [dsTag(a)]}));
     const d = document.createElement('textarea');
     d.className = 'adesc';
-    d.value = e.description || '';
-    const mark = () => d.classList.toggle('bad', !d.value.startsWith(a.name));
+    d.value = (S.descriptions || {})[id] || '';
+    d.placeholder = 'description of the image ("' + a.name + ', " is prefixed at training time)';
+    const mark = () => d.classList.toggle('bad', d.value.trim().startsWith(a.name));
     mark();
-    d.title = 'training caption — must START with "' + a.name + '" (the trigger); red border = it does not';
+    d.title = 'a plain description of the image; red = it already starts with the trigger (double prefix)';
     d.addEventListener('input', mark);
-    d.addEventListener('change', () => api('asset', {op: 'describe', name: a.name, path: e.path, description: d.value}).then(refresh));
+    d.addEventListener('change', () => api('describe', {id, description: d.value}).then(refresh));
     t.append(im, x, d);
     g.appendChild(t);
   });
@@ -398,7 +390,7 @@ $('#maketrain').addEventListener('click', async () => {
   const a = curAssetObj();
   if (!a) { flash('create an asset first'); return; }
   const fam = $('#trainfam').value;
-  if (!confirm(`Train "${a.name}" (${fam}) on ${a.dataset.length} image(s)?` +
+  if (!confirm(`Train "${a.name}" (${fam}) on ${datasetIds(a).length} image(s)?` +
       String.fromCharCode(10) + 'This runs on the GPU and blocks generation until done.')) return;
   const r = await api('train', {name: a.name, family: fam});
   if (r.error) alert(r.error);
@@ -420,7 +412,7 @@ $('#assetfolder').addEventListener('click', async () => {
   const path = prompt('folder to import into "' + a.name + '" (recursive):');
   if (!path) return;
   flash('importing folder…');
-  const r = await api('import_folder', {path: path.trim(), asset: a.name});
+  const r = await api('import_folder', {path: path.trim(), tags: [dsTag(a)]});
   if (r.error) { alert(r.error); return; }
   flash(`${r.added} added, ${r.duplicates} duplicates, ${r.skipped} skipped (of ${r.total})`);
   refresh();
@@ -460,13 +452,9 @@ async function walkEntry(en) {
   return [];
 }
 async function assetAddId(a, id) {
-  // add a just-imported image to the asset, caption seeded from its
-  // gleaned/recorded prompt (shared by drop, folder-walk and paste)
-  const m = await api('meta', {id});
-  const pr = m && m.recipe && m.recipe.prompt;
-  await api('asset', {op: 'add', name: a.name,
-                      path: S.project + '/images/' + id + '.png',
-                      description: pr ? a.name + ', ' + pr : a.name});
+  // put the asset's dataset word on the image (its description was seeded
+  // from the recipe prompt at birth/import; edit it on the tile)
+  await api('tag', {ids: [id], add: [dsTag(a)]});
 }
 async function assetDrop(dt) {
   const a = curAssetObj();
@@ -489,28 +477,18 @@ async function assetDrop(dt) {
     refresh();
     return;
   }
-  const add = async (path, id) => {
-    let desc = a.name;
-    if (id != null) {   // seed the caption from the image's own prompt
-      const m = await api('meta', {id});
-      if (m && m.recipe && m.recipe.prompt) desc = a.name + ', ' + m.recipe.prompt;
-    }
-    await api('asset', {op: 'add', name: a.name, path, description: desc});
-  };
   const own = dt.getData('application/x-evolver');
-  if (own) { await add(S.project + '/images/' + own + '.png', +own); refresh(); return; }
+  if (own) { await assetAddId(a, +own); refresh(); return; }
   const uri = (dt.getData('text/uri-list') || '').split(String.fromCharCode(10)).map(x => x.trim()).find(x => x && !x.startsWith('#'));
   if (uri && uri.startsWith(location.origin + '/img/')) {
-    const parts = uri.split('/');
-    const id = +parts.pop(), proj = parts.pop();
-    await add(proj + '/images/' + id + '.png', proj === S.project ? id : null);
+    await assetAddId(a, +uri.split('/').pop());
     refresh(); return;
   }
   const files = [...(dt.files || [])].filter(f => f.type.startsWith('image/'));
-  for (const f of files) {   // external file: import to the project, then add
+  for (const f of files) {   // external file: import, then the word
     const r = await fetch('/api/import', {method: 'POST', body: f}).then(x => x.json());
     if (r.error) { flash(r.error); continue; }
-    await add(S.project + '/images/' + r.id + '.png', r.id);
+    await assetAddId(a, r.id);
   }
   if (files.length) refresh();
   else if (!own && !uri) flash('drop an image (or drag one from any strip)');
@@ -987,14 +965,12 @@ $('#gen').addEventListener('click', async () => {
   if (r.error) alert(r.error);
   refresh();
 });
-$('#projsel').addEventListener('change', () => act('project', {name: $('#projsel').value}));
-$('#projnew').addEventListener('click', () => {
-  const name = prompt('new project name (letters, digits, - _):');
-  if (name) act('project', {name: name.trim()});
+$('#deftags').addEventListener('change', () => {
+  api('settings', {default_tags: $('#deftags').value.split(',')}).then(refresh);
 });
 $('#gc').addEventListener('click', async () => {
-  if (!confirm('Archive every image that is not pinned, not in the live working set (WI / refs / candidates), and not an ancestor of those? Files move to <store>/archive/.')) return;
-  const r = await api('gc', {}); flash(`archived ${r.removed}, kept ${r.kept}`); refresh();
+  if (!confirm('PURGE: permanently delete the files of every archived image that no unarchived image descends from? This cannot be undone.')) return;
+  const r = await api('gc', {}); flash(`purged ${r.removed} file(s), ${r.kept} images remain`); refresh();
 });
 // ---------- the carousel component ----------
 // Every .car gets: sticky open/close, single-image scroll steps that
@@ -1097,10 +1073,9 @@ document.addEventListener('keydown', async e => {
       } else openPrune(id, plan);
       return;
     }
-    if (Sel.target === 'asset') {   // remove the ENTRY; the image is untouched
+    if (Sel.target === 'asset') {   // remove the dataset WORD; the image is untouched
       const a = curAssetObj();
-      const en = a && a.dataset[Sel.index];
-      if (en) { e.preventDefault(); act('asset', {op: 'remove', name: a.name, path: en.path}); }
+      if (a && id != null) { e.preventDefault(); act('tag', {ids: [id], remove: [dsTag(a)]}); }
       return;
     }
     if (id != null && RW.includes(Sel.target)) {   // r/o sheets (history, genealogy) can't be edited
@@ -1147,11 +1122,11 @@ function peek(id) {
 // ---------- Info Window: right-click any Image ----------
 const SVG_COPY = icon(I.copy, 16);
 const SVG_TICK = icon(I.done, 16);
-let infoEl = null;
+let infoEl = null, infoX = 0, infoY = 0;
 function infoHide() { if (infoEl && !infoEl.hidden) { infoEl.hidden = true; return true; } return false; }
 async function showInfo(id, x, y) {
-  // id = number (current project) or {path} (any project's image)
-  const q = typeof id === 'object' ? id : {id};
+  infoX = x; infoY = y;
+  const q = {id};
   const r0 = await api('meta', q);         // always: the gc verdict is computed live
   if (r0.error) { notice(r0.error); return; }
   const m = r0;
@@ -1186,16 +1161,64 @@ async function showInfo(id, x, y) {
     row.append(kk, vv, c);
     infoEl.appendChild(row);
   }
+  infoEl.appendChild(tagEditor(m));
+  infoEl.appendChild(descEditor(m));
   infoEl.hidden = false;
   const r = infoEl.getBoundingClientRect();
   infoEl.style.left = Math.min(x, innerWidth - r.width - 12) + 'px';
   infoEl.style.top = Math.min(y, innerHeight - r.height - 12) + 'px';
 }
+// ---- tag editor (in the Info Window): words, add/remove, cascade ----
+// No word is protected: archived and pinned edit like any other. "apply to
+// descendants" (default on) cascades along parent-0 edges; ADD skips
+// archived descendants, REMOVE does not (server rule).
+let cascadeOn = localStorage.getItem('tag:cascade') !== '0';
+function tagEditor(m) {
+  const row = document.createElement('div'); row.className = 'iw-row';
+  const kk = document.createElement('span'); kk.className = 'iw-k'; kk.textContent = 'tags';
+  const box = document.createElement('div'); box.className = 'iw-tags';
+  const apply = (add, remove) => api('tag', {ids: [m.id], add, remove, cascade: cascadeOn})
+    .then(r => {
+      if (r.error) { notice(r.error); return refresh(); }
+      flash(`${add.length ? '+' + add.join(',') : ''}${remove.length ? ' -' + remove.join(',') : ''} on ${r.touched.length} image(s)`);
+      return refresh();
+    })
+    .then(() => showInfo(m.id, infoX, infoY));
+  (m.tags || []).forEach(w => {
+    const c = document.createElement('span'); c.className = 'chip' + (w === 'archived' ? ' arch' : '');
+    c.innerHTML = `${w}<span class="x" title="remove this word">×</span>`;
+    c.querySelector('.x').addEventListener('click', () => apply([], [w]));
+    box.appendChild(c);
+  });
+  const inp = document.createElement('input'); inp.className = 'iw-tagin'; inp.placeholder = 'add word…';
+  inp.setAttribute('list', 'wordlist');
+  let dl = $('#wordlist');
+  if (!dl) { dl = document.createElement('datalist'); dl.id = 'wordlist'; document.body.appendChild(dl); }
+  dl.innerHTML = Object.keys(S.words || {}).sort().map(w => `<option value="${w}">`).join('');
+  const submit = () => { const v = inp.value; inp.value = ''; if (v.trim()) apply(v.split(','), []); };
+  inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') submit(); });
+  inp.addEventListener('change', submit);
+  const casc = document.createElement('label'); casc.className = 'iw-casc';
+  casc.innerHTML = `<input type="checkbox" ${cascadeOn ? 'checked' : ''}> apply to descendants`;
+  casc.querySelector('input').addEventListener('change', e => { cascadeOn = e.target.checked; localStorage.setItem('tag:cascade', cascadeOn ? '1' : '0'); });
+  box.append(inp, casc);
+  row.append(kk, box);
+  return row;
+}
+function descEditor(m) {
+  const row = document.createElement('div'); row.className = 'iw-row';
+  const kk = document.createElement('span'); kk.className = 'iw-k'; kk.textContent = 'descr.';
+  const ta = document.createElement('textarea'); ta.className = 'iw-desc';
+  ta.value = m.description || '';
+  ta.placeholder = 'a plain description of the image (LoRA triggers are prefixed at training time)';
+  ta.addEventListener('keydown', e => e.stopPropagation());
+  ta.addEventListener('change', () => api('describe', {id: m.id, description: ta.value}).then(refresh));
+  row.append(kk, ta);
+  return row;
+}
 document.addEventListener('contextmenu', e => {
   const d = e.target.closest('[data-id]');
-  if (d) { e.preventDefault(); showInfo(+d.dataset.id, e.clientX, e.clientY); return; }
-  const pth = e.target.closest('[data-path]');
-  if (pth) { e.preventDefault(); showInfo({path: pth.dataset.path}, e.clientX, e.clientY); }
+  if (d) { e.preventDefault(); showInfo(+d.dataset.id, e.clientX, e.clientY); }
 });
 
 // ---------- clipboard ----------

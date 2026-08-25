@@ -24,7 +24,7 @@ def test_ids_exist():
     have = set(re.findall(r'id="([^"]+)"', html))
     used = set(re.findall(r"\$\('#([A-Za-z0-9_-]+)'\)", js))
     # ids the JS creates itself (the Space-peek overlay) or builds per tab
-    dynamic = {u for u in used if u.endswith("_")} | {"peek"}
+    dynamic = {u for u in used if u.endswith("_")} | {"peek", "wordlist"}
     missing = sorted(u for u in used - have - dynamic if not re.search(r"\W", u))
     assert not missing, f"ids used in JS but absent from index.html: {missing}"
     print(f"OK   {len(used)} element ids resolve")

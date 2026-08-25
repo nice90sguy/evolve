@@ -113,8 +113,10 @@ def do_generate(store, cfg, progress=None, should_abort=None, embed_workflow=Fal
               + ("forced" if cfg.fresh_model else "previous round used a LoRA") + ")")
         free_vram()
     store.note_round(base, lora)
-    if cfg.has_ref0:
-        store.hist_append(cfg.ref_ids[0])    # history: bred-from only, co-parents excluded
+    mother = cfg.ref_ids[0] if cfg.has_ref0 else None
+    if mother is not None:
+        store.hist_append(mother)            # history: bred-from only, co-parents excluded
+    tags = store.birth_tags(mother)          # mother's words (minus archived/pinned) + defaults
 
     ids = []
     for k in range(n):
@@ -147,7 +149,7 @@ def do_generate(store, cfg, progress=None, should_abort=None, embed_workflow=Fal
         with Image.open(src) as im:
             i = store.add_image(im.convert("RGB"), "gen", recipe, list(cfg.ref_ids),
                                 chunks=harvest_chunks(im, payload, embed_workflow),
-                                inputs=inputs)
+                                inputs=inputs, tags=tags)
         store.add_candidate(tab, i)
         ids.append(i)
         if progress:

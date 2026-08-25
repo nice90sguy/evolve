@@ -1,53 +1,49 @@
-"""asset.py - assets are DATA, not directories (architecture v4).
+"""asset.py - assets are DATA (v4), now just a name and its LoRAs.
 
-<root>/assets.json is a list of {name, loras: [paths], dataset: [{path,
-description}]}. Paths are root-relative posix; images live wherever they
-live (any project). `description` IS the training caption and must START
-with the asset name (= the LoRA trigger; validated at edit time in the UI,
-enforced at train time, never auto-repaired - the akasakas incident).
+<root>/assets.json = [{name, loras: [root-relative paths]}]. The training
+DATASET is the word `lora_dataset_<name>` on images (unarchived); the
+caption is the image's own description with the trigger prefixed at sync
+time (`<name>, <description>`; bare `<name>` if empty). Names double as
+the LoRA trigger and are never auto-decorated.
 """
-from project import image_rel, is_valid_name, read_json, root, root_rel, write_json
+from project import is_valid_name, read_json, root, root_rel, write_json
+
+DATASET_PREFIX = "lora_dataset_"
 
 
 def load_assets():
-    return read_json(root() / "assets.json", [])
+    out = []
+    for a in read_json(root() / "assets.json", []):
+        if a.get("name"):
+            out.append({"name": a["name"], "loras": list(a.get("loras") or [])})
+    return out
 
 
 def save_assets(assets):
-    write_json(root() / "assets.json", assets)
+    write_json(root() / "assets.json", [{"name": a["name"], "loras": a["loras"]} for a in assets])
 
 
 def find_asset(assets, name):
     return next((a for a in assets if a.get("name") == name), None)
 
 
-def dataset_ids(project_name):
-    """Image ids of THIS project that any asset's dataset lists ->
-    {id: [(asset_name, path), ...]}. These are GC roots for the project."""
-    pref = project_name + "/images/"
-    out = {}
-    for a in load_assets():
-        for e in a.get("dataset", []):
-            q = str(e.get("path", ""))
-            if q.startswith(pref) and q.endswith(".png"):
-                try:
-                    out.setdefault(int(q[len(pref):-4]), []).append((a["name"], q))
-                except ValueError:
-                    pass
-    return out
+def dataset_tag(name):
+    return DATASET_PREFIX + name
 
 
-def add_entry(a, path, description):
-    """Append a dataset entry once (no-op if the path is already listed)."""
-    if not any(e["path"] == path for e in a["dataset"]):
-        a["dataset"].append({"path": path, "description": description})
+def dataset_ids(store, name):
+    """Unarchived images carrying the asset's dataset word, by id."""
+    w = dataset_tag(name)
+    return [i for i in store.with_word(w) if not store.is_archived(i)]
 
 
-def remove_paths(assets, paths):
-    """Drop dataset entries for the given root-relative paths, everywhere."""
-    gone = set(paths)
-    for a in assets:
-        a["dataset"] = [e for e in a["dataset"] if e["path"] not in gone]
+def caption(name, description):
+    """The training caption: trigger prefixed by the app. Returns
+    (caption, warning-or-None) - a description that already starts with
+    the trigger is a double-prefix smell, not an error."""
+    d = (description or "").strip()
+    warn = f"description already starts with the trigger {name!r}" if d.startswith(name) else None
+    return (f"{name}, {d}" if d else name), warn
 
 
 def append_lora(name, rel):
@@ -60,16 +56,10 @@ def append_lora(name, rel):
     return a is not None
 
 
-def seeded_description(name, prompt):
-    """Caption seed for a new dataset entry: `name + ", " + recipe prompt`."""
-    prompt = (prompt or "").strip()
-    return f"{name}, {prompt}" if prompt else name
-
-
-def apply_op(assets, op, name, path=None, description=None):
-    """One asset CRUD operation on the list, in place. ops: create / delete /
-    add / remove / describe / add_lora. Returns an error message or None.
-    Descriptions are stored EXACTLY as given."""
+def apply_op(assets, op, name, path=None):
+    """create / delete / add_lora on the list, in place. Returns an error
+    message or None. (Dataset membership and descriptions are tag /
+    describe operations on images, not asset operations.)"""
     a = find_asset(assets, name)
     if op == "create":
         if not is_valid_name(name):
@@ -77,40 +67,19 @@ def apply_op(assets, op, name, path=None, description=None):
                     "letters, digits, - _, no spaces)")
         if a:
             return f"asset {name!r} exists"
-        assets.append({"name": name, "loras": [], "dataset": []})
+        assets.append({"name": name, "loras": []})
         return None
     if a is None:
         return f"no asset {name!r}"
     if op == "delete":
         assets.remove(a)
         return None
-    if op not in ("add", "remove", "describe", "add_lora"):
-        return f"bad op {op!r}"
-    try:
-        rel = root_rel(path)
-    except Exception:
-        return "path outside the root"
-    if op == "add":
-        add_entry(a, rel, description or name)
-    elif op == "remove":
-        a["dataset"] = [e for e in a["dataset"] if e["path"] != rel]
-    elif op == "describe":
-        for e in a["dataset"]:
-            if e["path"] == rel:
-                e["description"] = description or ""
-    elif op == "add_lora":
+    if op == "add_lora":
+        try:
+            rel = root_rel(path)
+        except Exception:
+            return "path outside the root"
         if rel not in a["loras"]:
             a["loras"].append(rel)
-    return None
-
-
-def add_project_image(name, project_name, image_id, prompt):
-    """Bulk-import helper: land a project image in an asset, caption seeded
-    from its gleaned prompt (persisted). Unknown asset = no-op."""
-    assets = load_assets()
-    a = find_asset(assets, name)
-    if a is None:
-        return False
-    add_entry(a, image_rel(project_name, image_id), seeded_description(name, prompt))
-    save_assets(assets)
-    return True
+        return None
+    return f"bad op {op!r}"

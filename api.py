@@ -3,14 +3,13 @@
 Handlers validate + translate; the work is done by the operators
 (generate.do_generate, camera.do_camera, training.do_training) and the
 data layer (store, trash, asset, lineage). One App context per process:
-the open store, the job runner, the settings.
+the store, the job runner, the settings.
 
-    GET  /                       frontend/index.html (live from disk, no-store)
-    GET  /static/{path}          frontend assets
-    GET  /img/{project}/{id}     a stored image
-    GET  /file/{path}            any image under the root (asset browser)
-    GET  /api/state              the full UI snapshot (polled)
-    POST /api/<name>             everything else (see ROUTES)
+    GET  /                  frontend/index.html (live from disk, no-store)
+    GET  /static/{path}     frontend assets
+    GET  /img/{id}          a stored image
+    GET  /api/state         the full UI snapshot (polled)
+    POST /api/<name>        everything else (see ROUTES)
 """
 import asyncio
 import mimetypes
@@ -27,11 +26,10 @@ import lineage
 import trash
 from controls import persistable, restore_from_image, sanitize_controls
 from generate import FAMILIES, GenerateConfig, do_generate
-from image_file import IMAGE_EXTS, list_images, sha1_of
+from image_file import list_images
 from jobs import Jobs
 from lora import list_loras
-from project import (RESERVED, is_valid_name, list_projects, root, root_rel)
-from store import open_project
+from project import clean_tags, load_settings, save_settings
 from training import (TrainConfig, abort_training, do_training, log_path,
                       sync_dataset)
 
@@ -39,8 +37,7 @@ FRONTEND_DIR = Path(__file__).resolve().parent / "frontend"
 
 
 class App:
-    """Process-wide context (singleton contract: one server, one root, one
-    open project)."""
+    """Process-wide context (singleton contract: one server, one root)."""
 
     def __init__(self, store, embed_workflow=False):
         self.store = store
@@ -48,11 +45,10 @@ class App:
         self.embed_workflow = embed_workflow
 
     def snapshot(self):
-        s = self.store
-        snap = s.snapshot()
+        snap = self.store.snapshot()
         snap.update({
-            "projects": list_projects(),
             "assets": asset_mod.load_assets(),
+            "settings": load_settings(),
             "train": self.jobs.train_status(),
             "comfy_ok": comfy_client.is_alive(busy=bool(self.jobs.busy)),
             "busy": self.jobs.busy,
@@ -76,18 +72,23 @@ def error(msg, status=400):
     return web.json_response({"error": msg}, status=status)
 
 
+def id_list(b):
+    """{'id': 3} or {'ids': [3, 4]} -> [3, 4]."""
+    ids = b.get("ids")
+    if ids is None:
+        ids = [b.get("id")]
+    return [int(i) for i in ids if i is not None]
+
+
 # ---------- pages & files ----------
 
 async def index(request):
-    """The UI, fresh from disk on every request (edits appear on refresh;
-    no-store kills Edge's HTML caching)."""
     return web.FileResponse(FRONTEND_DIR / "index.html",
                             headers={"Cache-Control": "no-store"})
 
 
 async def serve_static(request):
-    rel = request.match_info["path"]
-    f = (FRONTEND_DIR / rel).resolve()
+    f = (FRONTEND_DIR / request.match_info["path"]).resolve()
     try:
         f.relative_to(FRONTEND_DIR)
     except ValueError:
@@ -95,40 +96,18 @@ async def serve_static(request):
     if not f.is_file():
         raise web.HTTPNotFound()
     ctype = mimetypes.guess_type(f.name)[0] or "application/octet-stream"
-    return web.FileResponse(f, headers={"Cache-Control": "no-store",
-                                        "Content-Type": ctype})
+    return web.FileResponse(f, headers={"Cache-Control": "no-store", "Content-Type": ctype})
 
 
 async def serve_image(request):
-    """/img/<project>/<id>: project-qualified, because /img/<id> alone is
-    ambiguous across projects (browser cache served a stale image after a
-    switch, user-caught). File existence is the truth (archived = 404)."""
+    """/img/<id>. File existence is the truth (purged = 404)."""
     i = int(request.match_info["id"])
-    proj = request.match_info.get("project")
-    if proj:
-        if not is_valid_name(proj):
-            raise web.HTTPNotFound()
-        f = root() / proj / "images" / f"{i}.png"
-    else:                       # legacy unqualified URL: current project
-        f = ctx(request).store.path(i)
+    f = ctx(request).store.path(i)
     if not f.is_file():
         raise web.HTTPNotFound()
     return web.FileResponse(f, headers={
         "Content-Disposition": f'inline; filename="{i}.png"',
         "Cache-Control": "no-cache"})
-
-
-async def serve_file(request):
-    """Any image under the root by root-relative path (the asset browser
-    shows images from ANY project). Strictly contained."""
-    try:
-        f = (root() / request.match_info["path"]).resolve()
-        f.relative_to(root())
-    except Exception:
-        raise web.HTTPNotFound()
-    if not (f.is_file() and f.suffix.lower() in IMAGE_EXTS):
-        raise web.HTTPNotFound()
-    return web.FileResponse(f, headers={"Cache-Control": "no-cache"})
 
 
 # ---------- state & controls ----------
@@ -137,8 +116,13 @@ async def handle_state(request):
     return web.json_response(ctx(request).snapshot())
 
 
+async def handle_settings(request):
+    """App settings (default_tags, ...). Returns the settings as saved."""
+    b = await request.json()
+    return web.json_response(save_settings(**b))
+
+
 async def handle_controls(request):
-    """Persist control edits (so a reload keeps your prompt etc.)."""
     store = ctx(request).store
     edits = await request.json()
     with store.lock:
@@ -167,7 +151,7 @@ async def handle_place(request):
         elif target == "slot":
             store.place_slot(i, index)
         elif target == "pin":
-            store.pin(i, True, index)
+            store.pin(i, True)
         else:
             return error("bad target")
     return ok()
@@ -189,8 +173,9 @@ async def handle_clear(request):
             if index < len(c):
                 c.pop(index)
         elif target == "pin":
-            if index < len(store.state["pins"]):
-                store.state["pins"].pop(index)
+            pins = store.pins()
+            if index < len(pins):
+                store.pin(pins[index], False)
         store.save_state()
     return ok()
 
@@ -207,6 +192,27 @@ async def handle_slots(request):
     return ok()
 
 
+# ---------- tags & descriptions ----------
+
+async def handle_tag(request):
+    """{id|ids, add:[..], remove:[..], cascade:bool} -> {touched:[ids]}."""
+    store = ctx(request).store
+    b = await request.json()
+    ids = id_list(b)
+    add, remove = clean_tags(b.get("add") or []), clean_tags(b.get("remove") or [])
+    if not ids or not (add or remove):
+        return error("nothing to do")
+    touched = store.tag(ids, add=add, remove=remove, cascade=bool(b.get("cascade")))
+    return ok(touched=touched)
+
+
+async def handle_describe(request):
+    b = await request.json()
+    if not ctx(request).store.describe(b.get("id"), b.get("description") or ""):
+        return error(f"no such image {b.get('id')}", 404)
+    return ok()
+
+
 # ---------- generators ----------
 
 async def handle_generate(request):
@@ -220,10 +226,10 @@ async def handle_generate(request):
     if op not in ("create", "derive"):
         op = "derive"
     c = sanitize_controls(given, store.alive)
-    if op == "create":               # fiat: the tab IS the no-refs gate
+    if op == "create":
         c["ref0"] = None
         c["refs"] = [None, None, None]
-    else:                            # derive: Klein-only, per spec
+    else:
         c["family"] = "klein"
     cfg = GenerateConfig.from_controls(c, op)
     with store.lock:
@@ -238,7 +244,6 @@ async def handle_generate(request):
 
 
 async def handle_pov(request):
-    """Camera generator. Same busy lock as Generate."""
     app = ctx(request)
     store = app.store
     why = app.jobs.idle_error()
@@ -251,7 +256,7 @@ async def handle_pov(request):
     if not (az or el or di):
         return error("no camera axis selected")
     if not store.alive(store.state["working"]):
-        return error("no working image to re-shoot")   # budding needs a parent
+        return error("no working image to re-shoot")
     cfg = camera.CameraConfig(store.state["working"], az, el, di, int(q.get("seed") or 0))
     with store.lock:
         store.state["slots"] = max(1, min(64, int(q.get("outputs") or store.state["slots"])))
@@ -263,8 +268,6 @@ async def handle_pov(request):
 
 
 async def handle_abort(request):
-    """Stop the current round NOW: no further candidates are queued and the
-    in-flight ComfyUI job is interrupted. Finished candidates stay."""
     if not ctx(request).jobs.request_abort():
         return ok(aborted=False)
     try:
@@ -285,26 +288,10 @@ async def handle_family(request):
 
 
 async def handle_meta(request):
-    """Full metadata for ONE image (Info Window): by id in the current
-    project, or by root-relative PATH for any project's image."""
+    """Full metadata for ONE image (Info Window)."""
     store = ctx(request).store
     q = await request.json()
     i = q.get("id")
-    if i is None and q.get("path"):
-        try:
-            rel = root_rel(q["path"])
-        except Exception:
-            return error("path outside the root")
-        if rel.split("/")[0] == store.name:
-            try:
-                i = int(rel.split("/")[-1][:-4])
-            except ValueError:
-                return error("bad path")
-        else:
-            m = lineage.foreign_meta(rel)
-            if m is None:
-                return error(f"no record for {rel}", 404)
-            return web.json_response(m)
     with store.lock:
         if i not in store.images:
             return error(f"unknown image {i}", 404)
@@ -317,13 +304,11 @@ async def handle_discard(request):
     b = await request.json()
     why = trash.discard(ctx(request).store, b.get("id"))
     if why:
-        return error(f"kept: {why}", 409)
+        return error(why, 404)
     return ok()
 
 
 async def handle_prune(request):
-    """{id, force, apply}: apply=false returns the impact plan for the
-    dialog; apply=true executes it (recomputed server-side)."""
     store = ctx(request).store
     b = await request.json()
     i, force = b.get("id"), bool(b.get("force"))
@@ -334,25 +319,26 @@ async def handle_prune(request):
 
 
 async def handle_gc(request):
-    return web.json_response(trash.gc(ctx(request).store))
+    return web.json_response(trash.purge(ctx(request).store))
 
 
 # ---------- import ----------
 
 async def handle_import(request):
-    """Raw image bytes (drop/paste/file) -> stored image id."""
+    """Raw image bytes (drop/paste/file) -> stored image id. Optional
+    ?tags=a,b puts words on it."""
     data = await request.read()
     if not data:
         return error("empty upload")
+    tags = clean_tags((request.query.get("tags") or "").split(","))
     try:
-        i, _ = ctx(request).store.import_bytes(data)
+        i, _ = ctx(request).store.import_bytes(data, tags=tags)
     except Exception as e:
         return error(f"not a readable image: {e}")
     return ok(id=i)
 
 
 async def handle_import_url(request):
-    """A URL dropped from another browser: fetched server-side (no CORS)."""
     b = await request.json()
     url = b["url"]
     if not re.match(r"^https?://", url):
@@ -361,22 +347,21 @@ async def handle_import_url(request):
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 evolve"})
         with urllib.request.urlopen(req, timeout=20) as r:
             data = r.read(64 * 1024 ** 2)
-        i, _ = ctx(request).store.import_bytes(data)
+        i, _ = ctx(request).store.import_bytes(data, tags=clean_tags(b.get("tags") or []))
     except Exception as e:
         return error(f"fetch failed: {e}")
     return ok(id=i)
 
 
 async def handle_import_folder(request):
-    """Bulk-import every image in a DISK folder (recursive) - the server
-    reads straight from disk. Optionally lands each image in an asset,
-    caption seeded from its gleaned prompt."""
+    """Bulk-import every image in a DISK folder (recursive), optionally
+    putting words on each (e.g. an asset's dataset word)."""
     store = ctx(request).store
     b = await request.json()
     folder = Path(str(b.get("path") or "").strip().strip('"')).expanduser()
     if not folder.is_dir():
         return error(f"not a folder: {folder}")
-    asset_name = (b.get("asset") or "").strip() or None
+    tags = clean_tags(b.get("tags") or [])
 
     def work():
         added = dups = skipped = 0
@@ -387,44 +372,25 @@ async def handle_import_folder(request):
             except OSError:
                 skipped += 1
                 continue
-            i, new = store.import_bytes(data)
+            _, new = store.import_bytes(data, tags=tags)
             added += new
             dups += not new
-            if asset_name:
-                pr = ((store.images[i].get("recipe") or {}).get("prompt") or "")
-                with store.lock:
-                    asset_mod.add_project_image(asset_name, store.name, i, pr)
         return {"added": added, "duplicates": dups, "skipped": skipped, "total": len(files)}
 
     r = await asyncio.get_event_loop().run_in_executor(None, work)
     return ok(**r)
 
 
-# ---------- projects, assets, training ----------
-
-async def handle_project(request):
-    """Switch or create a project (singleton: refuses while generating)."""
-    app = ctx(request)
-    if app.jobs.busy:
-        return error("busy - wait or Stop first", 409)
-    b = await request.json()
-    name = (b.get("name") or "").strip()
-    try:
-        app.store = open_project(name)
-    except ValueError as e:
-        return error(str(e))
-    print(f"project: {name}")
-    return ok(project=name)
-
+# ---------- assets & training ----------
 
 async def handle_asset(request):
-    """Asset CRUD (v4): create / delete / add / remove / describe / add_lora."""
+    """create / delete / add_lora. Dataset membership = the word
+    lora_dataset_<name> (use /api/tag); captions = /api/describe."""
     store = ctx(request).store
     b = await request.json()
     with store.lock:
         assets = asset_mod.load_assets()
-        why = asset_mod.apply_op(assets, b.get("op"), (b.get("name") or "").strip(),
-                                 b.get("path"), b.get("description"))
+        why = asset_mod.apply_op(assets, b.get("op"), (b.get("name") or "").strip(), b.get("path"))
         if why:
             return error(why, 404 if why.startswith("no asset") else 400)
         asset_mod.save_assets(assets)
@@ -432,7 +398,6 @@ async def handle_asset(request):
 
 
 async def handle_train(request):
-    """Start a training job. The button click IS the user's say-so."""
     app = ctx(request)
     b = await request.json()
     name = (b.get("name") or "").strip()
@@ -443,11 +408,10 @@ async def handle_train(request):
         return error("generating - wait or Stop first", 409)
     if app.jobs.training_running():
         return error("a training job is already running", 409)
-    a = asset_mod.find_asset(asset_mod.load_assets(), name)
-    if a is None:
+    if asset_mod.find_asset(asset_mod.load_assets(), name) is None:
         return error(f"no asset {name!r}", 404)
     try:
-        sync_dataset(a)
+        sync_dataset(app.store, name)
     except ValueError as e:
         return error(str(e))
     cfg = TrainConfig(name, family, b.get("steps"))
@@ -465,15 +429,15 @@ async def handle_train_abort(request):
 
 
 ROUTES = {
-    "state": handle_state, "controls": handle_controls, "place": handle_place,
-    "clear": handle_clear, "pin": handle_pin, "slots": handle_slots,
+    "state": handle_state, "settings": handle_settings, "controls": handle_controls,
+    "place": handle_place, "clear": handle_clear, "pin": handle_pin, "slots": handle_slots,
+    "tag": handle_tag, "describe": handle_describe,
     "generate": handle_generate, "pov": handle_pov, "abort": handle_abort,
     "family": handle_family, "meta": handle_meta, "discard": handle_discard,
     "prune": handle_prune, "gc": handle_gc,
     "import": handle_import, "import_url": handle_import_url,
     "import_folder": handle_import_folder,
-    "project": handle_project, "asset": handle_asset,
-    "train": handle_train, "train_abort": handle_train_abort,
+    "asset": handle_asset, "train": handle_train, "train_abort": handle_train_abort,
 }
 
 
@@ -485,7 +449,5 @@ def create_app(store, embed_workflow=False):
     app.router.add_get("/api/state", handle_state)
     for name, handler in ROUTES.items():
         app.router.add_post(f"/api/{name}", handler)
-    app.router.add_get("/file/{path:.+}", serve_file)
     app.router.add_get("/img/{id:\\d+}", serve_image)
-    app.router.add_get("/img/{project}/{id:\\d+}", serve_image)
     return app

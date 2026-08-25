@@ -5,17 +5,18 @@
 </head><body>
 <div id="app">
 <nav>
-  <div id="proj" title="project = a subdir of the root; its only effect is the path context for images. Each project has its own background tint"><span id="projsw" class="sw"></span><select id="projsel"></select><button id="projnew" title="create a new project">+</button></div>
   <a id="nav-evolver" class="on">Evolver</a><a id="nav-assets">Assets</a>
   <div class="spacer"></div>
+  <span id="rootname" class="hint" title="the store root"></span>
 </nav>
 <main>
   <div id="top">
     <details class="car" id="car-hist" open><summary><b>History</b> <span class="n">0</span> — images bred from: the ref0 of each Generate, the source of each POV; newest first</summary>
       <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
-    <details class="car drop" id="car-pin" data-target="pin" data-index="999"><summary><b>Pinned</b> <span class="n">0</span> — P pins the selection; Del here unpins; drop / paste to pin</summary>
+    <details class="car drop" id="car-pin" data-target="pin" data-index="999"><summary><b>Pinned</b> <span class="n">0</span> — the word <i>pinned</i>: P pins the selection; Del here unpins; drop / paste to pin</summary>
       <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
-    <details class="car" id="car-all"><summary><b>All</b> <span class="n">0</span> — every image in this project, by number</summary>
+    <div id="wordbar" title="views: every word is a view — click a word to see its images (all of them, archived included)"></div>
+    <details class="car" id="car-all"><summary><b id="viewname">All</b> <span class="n">0</span> — <span id="viewhint">every image, by number</span></summary>
       <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
     <details id="genea"><summary><b>Genealogy</b> — of the Working Image</summary>
       <details class="car" id="car-gpar" open><summary><b>Parents</b> <span class="n">0</span> — its reference images</summary>
@@ -63,7 +64,7 @@
         <div class="tpage" data-tab="derive">
           <div class="knobs">
             <span id="refs">
-              <div class="ref drop" data-target="ref0" data-index="0" tabindex="0" title="reference 0 — the identity/continuity carrier. Click the working image to put it here (click while holding Space = its parent); picking an image auto-sets its parent"><span class="hint">ref0</span></div>
+              <div class="ref drop" data-target="ref0" data-index="0" tabindex="0" title="reference 0 — the identity/continuity carrier (the MOTHER: its words are copied to the children). Click the working image to put it here (click while holding Space = its parent); picking an image auto-sets its parent"><span class="hint">ref0</span></div>
               <div class="ref drop" data-target="ref" data-index="0" tabindex="0"><span class="hint">+</span></div>
               <div class="ref drop" data-target="ref" data-index="1" tabindex="0"><span class="hint">+</span></div>
               <div class="ref drop" data-target="ref" data-index="2" tabindex="0"><span class="hint">+</span></div>
@@ -112,11 +113,11 @@
     </div>
   <div id="assets" hidden>
     <div class="ahead">
-      <select id="assetsel" title="assets are root-global: shared by every project"></select>
+      <select id="assetsel" title="an asset = a name (the LoRA trigger) + its trained LoRAs; its dataset is every unarchived image carrying the word lora_dataset_&lt;name&gt;"></select>
       <button id="assetnew" title="create a new asset (its name is also the LoRA trigger)">+ new</button>
-      <button id="assetdel" title="delete this asset — the images themselves are untouched">delete</button>
-      <button id="assetfolder" title="import every image in a disk folder (recursive, server-side — fast for big datasets) into this asset">add folder…</button>
-      <span class="hint">drag any image in to add it · Del removes an entry · the description IS the training caption and must start with the asset name</span>
+      <button id="assetdel" title="delete this asset — the images and their words are untouched">delete</button>
+      <button id="assetfolder" title="import every image in a disk folder (recursive, server-side) with this asset's dataset word">add folder…</button>
+      <span class="hint">drag any image in to add the dataset word · Del removes it · the description is a plain description of the image; the trigger is prefixed at training time</span>
       <span style="flex:1"></span>
       <select id="trainfam" title="training family"><option value="zimage">Z-Image</option><option value="klein">Flux Klein (experimental)</option></select>
       <button id="maketrain" title="sync the dataset to _train/ and train a LoRA — this IS the explicit say-so">Make LoRA</button>
@@ -131,7 +132,8 @@
     <label>w <input type="number" id="width" step="16" value="1024"></label>
     <label>h <input type="number" id="height" step="16" value="1024"></label>
     <label title="reload pristine model weights before every round (~15-30s); otherwise only after a round that used a LoRA (ComfyUI #11021)"><input type="checkbox" id="fresh"> reload model on Generate</label>
-    <button id="gc" title="archive every image that is not pinned, not in the live working set (WI / refs / candidates), and not an ancestor of those">Collect garbage</button>
+    <label title="words put on every image the app makes or imports (comma-separated); bred images also copy their mother's words">default tags <input type="text" id="deftags" placeholder="softlock, (c) 2026 Josh" style="width:200px"></label>
+    <button id="gc" title="PURGE: permanently delete the files of archived images that no unarchived image descends from">Purge archived</button>
     <span id="msg"></span>
     <span class="spacer"></span>
     <span id="progwrap"><progress id="prog" max="1" value="0"></progress> <span id="progtxt"></span></span>
@@ -144,7 +146,7 @@
   <div class="pbox">
     <div class="ptitle"></div>
     <div class="pbody"></div>
-    <label class="pforce"><input type="checkbox" id="pforce"> also unpin / remove from assets, and archive everything in the branch</label>
+    <label class="pforce"><input type="checkbox" id="pforce"> also archive (and unpin) the pinned images in the branch</label>
     <div class="pbtns"><button id="pcancel">Cancel</button><button id="pgo">Prune</button></div>
   </div>
 </div>

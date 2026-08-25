@@ -758,7 +758,24 @@ behaviour they record is unchanged (builders verified byte-identical).
   same features), `api_to_ui.py`, README with the manual curl-level steps,
   and the original experiment payloads.
 
-## Tags & views — SPECCED 2026-08-25, NOT BUILT (wait for the user's go)
+## Tags & views — BUILT 2026-08-25 (spec below, as agreed; v1)
+
+Build notes: `project.py` = root + settings only (no projects); `store.py`
+records carry `tags` + `description`, journal events `tag` (ids/add/remove/
+cascade/from), `describe`, `purge`; `Store.tag()` implements the cascade
+rules, `Store.garbage()`/`purge()` the only integrity rule; `trash.py` =
+discard/sweep/prune/purge in tag vocabulary; `asset.py` = `{name, loras}`
++ `dataset_tag()`/`dataset_ids()`/`caption()`; `training.sync_dataset(store,
+name)` writes `<id>.png/.txt`; api routes `tag`, `describe`, `settings`
+(+ `gc` = purge, `import*` take `tags`); frontend: word bar + view
+carousel (`car-all` shows the chosen word, archived included), Info popup
+tag editor (chips, datalist autocomplete, cascade checkbox) + description
+textarea, asset tiles = `lora_dataset_<name>` images, `default tags` box
+in the session bar, `Purge archived` button. `tools/migrate_projects.py`
+migrated `D:\home\josh\Documents\evolve_projects` (old dirs under
+`_migrated/`); `--scan DIR --tag w` absorbs alien images with the same
+code. evolve.py refuses to start on an unmigrated root.
+
 
 Supersedes: projects-as-directories, `archive/`, per-project state/journal,
 asset datasets as lists, `trash.py`'s root machinery. Settled over a long

@@ -127,6 +127,7 @@ def do_camera(store, cfg, progress=None, should_abort=None, embed_workflow=False
         free_vram()
     store.note_round(base, True)
     store.hist_append(cfg.source_id)            # history: Camera appends its true source
+    tags = store.birth_tags(cfg.source_id)
     ids = []
     for k in range(n):
         if should_abort and should_abort():
@@ -145,7 +146,7 @@ def do_camera(store, cfg, progress=None, should_abort=None, embed_workflow=False
         with Image.open(src) as im:
             i = store.add_image(im.convert("RGB"), "pov", recipe, [cfg.source_id],
                                 chunks=harvest_chunks(im, payload, embed_workflow),
-                                inputs=inputs)
+                                inputs=inputs, tags=tags)
         store.add_candidate(tab, i)
         ids.append(i)
         if progress:

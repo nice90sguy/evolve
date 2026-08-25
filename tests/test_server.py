@@ -15,7 +15,7 @@ sys.path.insert(0, str(HERE))
 from PIL import Image
 
 import project
-from store import open_project
+from store import Store
 
 PORT = 8199
 BASE = f"http://127.0.0.1:{PORT}"
@@ -36,17 +36,22 @@ def get(path):
         return r.status, r.read()
 
 
+def state():
+    return json.loads(get("/api/state")[1])
+
+
 def main():
     rt = Path(tempfile.mkdtemp(prefix="evolve_srv_"))
     project.set_root(rt)
+    project.save_settings(default_tags=["softlock"])
     im = Image.new("RGB", (8, 8), (1, 2, 3))
-    st = open_project("p")
-    A = st.add_image(im, "gen", recipe={"prompt": "eve", "seed": 1})
-    X = st.add_image(im, "gen", recipe={"prompt": "x", "seed": 2}, parents=[A])
-    k = st.add_image(im, "gen", recipe={"prompt": "k", "seed": 3}, parents=[X])
+    st = Store(rt)
+    A = st.add_image(im, "gen", recipe={"prompt": "eve", "seed": 1}, tags=st.birth_tags())
+    X = st.add_image(im, "gen", recipe={"prompt": "x", "seed": 2}, parents=[A], tags=st.birth_tags(A))
+    k = st.add_image(im, "gen", recipe={"prompt": "k", "seed": 3}, parents=[X], tags=st.birth_tags(X))
     st.save_state()
     srv = subprocess.Popen([sys.executable, str(HERE / "evolve.py"), "--root", str(rt),
-                            "--project", "p", "--port", str(PORT)],
+                            "--port", str(PORT)],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         for _ in range(40):
@@ -58,52 +63,56 @@ def main():
         else:
             raise SystemExit("server did not start")
         s, page = get("/")
-        assert b'id="prunedlg"' in page and b"/static/js/evolve.js" in page, "index"
-        assert get("/static/js/evolve.js")[1][:20] and get("/static/css/evolve.css")[0] == 200
-        s, snap = post("/api/state", {}) if False else (200, json.loads(get("/api/state")[1]))
-        assert snap["project"] == "p" and snap["all_ids"] == [A, X, k] and "families" in snap
-        assert snap["pov_elev"][0][0] == "low" and snap["comfy_ok"] in (True, False)
+        assert b'id="wordbar"' in page and b"/static/js/evolve.js" in page, "index"
+        assert get("/static/js/evolve.js")[0] == 200 and get("/static/css/evolve.css")[0] == 200
+        snap = state()
+        assert snap["all_ids"] == [A, X, k] and snap["words"] == {"softlock": 3}
+        assert snap["settings"]["default_tags"] == ["softlock"] and snap["tags"][str(k)] == ["softlock"]
+        s, r = post("/api/settings", {"default_tags": ["softlock", " julie ", "bad word", ""]})
+        assert r["default_tags"] == ["softlock", "julie"], r
+        s, r = post("/api/tag", {"id": X, "add": ["freddy"], "cascade": True})
+        assert s == 200 and r["touched"] == [X, k]
+        s, r = post("/api/tag", {"ids": [A], "add": ["pinned"]})
+        assert state()["pins"] == [A]
+        s, r = post("/api/describe", {"id": k, "description": "a kid"})
+        assert state()["descriptions"][str(k)] == "a kid"
+        s, m = post("/api/meta", {"id": k})
+        assert m["tags"] == ["softlock", "freddy"] and m["description"] == "a kid" and m["gc"] == "live"
         s, _ = post("/api/place", {"id": k, "target": "working"})
-        assert s == 200
-        s, _ = post("/api/pin", {"id": k, "on": True})
         s, fam = post("/api/family", {"id": A})
         assert [t["id"] for t in fam["children"]] == [X]
+        s, plan = post("/api/prune", {"id": X})
+        assert s == 200 and sorted(plan["archive"]) == [X, k]
+        s, plan = post("/api/prune", {"id": X, "apply": True})
+        snap = state()
+        assert "archived" in snap["tags"][str(X)] and snap["working"] is None
         s, m = post("/api/meta", {"id": X})
-        assert m["gc"].startswith("ancestor of"), m
-        s, m = post("/api/meta", {"path": f"{rt}/p/images/{k}.png"})
-        assert m["gc"] == "pinned"
-        s, d = post("/api/discard", {"id": X})
-        assert s == 409 and d["error"].startswith("kept:")
-        s, plan = post("/api/prune", {"id": X, "force": True})
-        assert s == 200 and sorted(plan["archive"]) == [X, k] and plan["unpin"] == [k]
-        s, plan = post("/api/prune", {"id": X, "force": True, "apply": True})
-        assert sorted(plan["archive"]) == [X, k]
-        assert get(f"/img/p/{A}")[0] == 200
+        assert m["gc"].startswith("archived - purgeable")
+        s, r = post("/api/gc", {})
+        assert r["removed"] == 2 and state()["all_ids"] == [A]
         try:
-            get(f"/img/p/{X}")
-            raise AssertionError("archived image still served")
+            get(f"/img/{X}")
+            raise AssertionError("purged image still served")
         except urllib.error.HTTPError as e:
             assert e.code == 404
+        s, r = post("/api/discard", {"id": A})
+        assert s == 200 and "archived" in state()["tags"][str(A)]
         s, r = post("/api/asset", {"op": "create", "name": "julie"})
-        assert s == 200 and r["assets"][0]["name"] == "julie"
-        s, r = post("/api/asset", {"op": "add", "name": "julie", "path": f"p/images/{A}.png"})
-        assert r["assets"][0]["dataset"][0]["description"] == "julie"
+        assert s == 200 and r["assets"] == [{"name": "julie", "loras": []}]
         s, r = post("/api/asset", {"op": "create", "name": "bad name"})
         assert s == 400
-        s, r = post("/api/train", {"name": "nope", "family": "zimage"})
-        assert s == 404
+        s, r = post("/api/train", {"name": "julie", "family": "zimage"})
+        assert s == 400 and "empty dataset" in r["error"], r
+        s, r = post("/api/tag", {"id": A, "add": ["lora_dataset_julie"], "remove": ["archived"]})
         s, r = post("/api/train", {"name": "julie", "family": "illustrious"})
-        assert s == 200, r                       # starts, then fails honestly
+        assert s == 200, r
         time.sleep(1.0)
-        snap = json.loads(get("/api/state")[1])
+        snap = state()
         assert snap["train"] and not snap["train"]["running"] and "kohya" in snap["train"]["error"], snap["train"]
+        assert (rt / "_train" / "julie" / f"{A}.txt").read_text(encoding="utf-8") == "julie, eve"
         s, r = post("/api/controls", {"prompt": "saved", "bogus": 1})
-        snap = json.loads(get("/api/state")[1])
+        snap = state()
         assert snap["controls"]["prompt"] == "saved" and "bogus" not in snap["controls"]
-        s, r = post("/api/project", {"name": "q"})
-        assert s == 200 and json.loads(get("/api/state")[1])["project"] == "q"
-        s, r = post("/api/project", {"name": "loras"})
-        assert s == 400
         s, r = post("/api/pov", {"elev": "low"})
         assert s == 400 and "working" in r["error"]
         s, r = post("/api/abort", {})

@@ -1,12 +1,17 @@
-"""store.py - one project's image store: flat images/<id>.png (ids never
-reused), an append-only journal.jsonl (image records with full recipe +
-parent ids, hist / gc / prune events) and state.json (the live UI state:
-working image, slots, per-tab candidates, pins, controls).
+"""store.py - THE image store: flat images/<id>.png (ids never reused), an
+append-only journal.jsonl and state.json (the live UI state), all under
+the root.
 
-Images are IMMUTABLE. Lineage doctrine: a tree with a DAG overlay - parent 0
-is the continuity carrier; co-parents are journal edges only. The journal is
-the sole lineage authority (the png's `evolve` chunk carries NO ancestry).
-Single-threaded access is guaranteed by `lock` (generation runs in a thread).
+Images are IMMUTABLE; records carry mutable TAGS (words the user puts on
+images) and a DESCRIPTION (1-1 with the image). Lineage doctrine: a tree
+with a DAG overlay - parent 0 is the continuity carrier; co-parents are
+journal edges only. The journal is the sole lineage authority.
+
+Tags (2026-08-25): `archived` and `pinned` are ordinary words the app also
+uses; no word is protected. At birth a child copies its MOTHER's words
+minus those two, plus the settings' default tags. Cascade (add to / remove
+from descendants along parent-0 edges) is one explicit operation, one
+journal event. Single-threaded access is guaranteed by `lock`.
 """
 import json
 import threading
@@ -17,9 +22,11 @@ from comfy_client import INPUT_DIR
 from controls import CONTROLS, sanitize_controls
 from image_file import flattened_rgb, link_or_copy, open_bytes, sha1_of, write_png
 from image_meta import evolve_chunk, glean_recipe
-from project import project_color, project_dir, save_config
+from project import clean_tags, load_settings
 
 TABS = ("create", "derive", "camera")
+ARCHIVED, PINNED = "archived", "pinned"
+NOT_INHERITED = {ARCHIVED, PINNED}
 
 
 def empty_candidates():
@@ -29,16 +36,15 @@ def empty_candidates():
 class Store:
     def __init__(self, directory):
         self.dir = Path(directory)
-        self.name = self.dir.name                 # the project name
+        self.name = self.dir.name
         self.images_dir = self.dir / "images"
         self.images_dir.mkdir(parents=True, exist_ok=True)
         self.journal = self.dir / "journal.jsonl"
         self.state_file = self.dir / "state.json"
         self.lock = threading.RLock()
-        self.images = {}          # id -> record (incl. "gone" after gc)
+        self.images = {}          # id -> record (tags: list, description: str, purged?)
         self.history = []         # ids, bred-from order (see hist_append)
         self.next_id = 1
-        self.color = None
         self._load()
 
     # ---------- persistence ----------
@@ -51,28 +57,42 @@ class Store:
                 ev = json.loads(line)
                 t = ev["t"]
                 if t == "image":
+                    ev["tags"] = clean_tags(ev.get("tags") or [])
+                    ev["description"] = ev.get("description") or ""
                     self.images[ev["id"]] = ev
                     self.next_id = max(self.next_id, ev["id"] + 1)
+                elif t == "tag":
+                    for i in ev.get("ids", []):
+                        r = self.images.get(i)
+                        if r:
+                            self._apply_tags(r, ev.get("add") or [], ev.get("remove") or [])
+                elif t == "describe":
+                    r = self.images.get(ev["id"])
+                    if r:
+                        r["description"] = ev.get("description") or ""
                 elif t == "working" and ev["id"] is not None:
-                    # legacy (pre-v2): every WI change, deduped each-once
-                    if ev["id"] not in self.history:
+                    if ev["id"] not in self.history:      # legacy (pre-v2)
                         self.history.append(ev["id"])
                 elif t == "hist" and ev["id"] is not None:
                     if not self.history or self.history[-1] != ev["id"]:
                         self.history.append(ev["id"])
-                elif t == "gc":
+                elif t == "gc":                            # legacy: archive = a word now
+                    for i in ev["ids"]:
+                        r = self.images.get(i)
+                        if r:
+                            self._apply_tags(r, [ARCHIVED], [])
+                elif t == "purge":
                     for i in ev["ids"]:
                         if i in self.images:
-                            self.images[i]["gone"] = True
+                            self.images[i]["purged"] = True
         if self.state_file.exists():
             self.state = json.loads(self.state_file.read_text(encoding="utf-8"))
         else:
             self.state = {"working": None, "slots": 6, "candidates": empty_candidates(),
-                          "pins": [], "controls": dict(CONTROLS)}
+                          "controls": dict(CONTROLS)}
         s = self.state
         s["controls"] = sanitize_controls(s.get("controls") or {}, self.alive)
-        if isinstance(s.get("candidates"), list):
-            # v3.1 migration: candidates become per-tab, routed by recipe op
+        if isinstance(s.get("candidates"), list):          # v3.1 migration
             b = empty_candidates()
             for i in s["candidates"]:
                 r = (self.images.get(i) or {}).get("recipe") or {}
@@ -82,17 +102,27 @@ class Store:
             s["candidates"] = b
         s["candidates"] = {t: [i for i in s["candidates"].get(t, []) if self.alive(i)]
                            for t in TABS}
-        s["pins"] = [i for i in s.get("pins", []) if self.alive(i)]
-        # pinned images are never also candidates, in any tab
-        s["candidates"] = {t: [i for i in v if i not in s["pins"]]
-                           for t, v in s["candidates"].items()}
+        for i in s.pop("pins", []):                         # legacy pins -> the word
+            if self.alive(i) and PINNED not in self.images[i]["tags"]:
+                self._apply_tags(self.images[i], [PINNED], [])
         if not self.alive(s.get("working")):
             s["working"] = None
+
+    @staticmethod
+    def _apply_tags(rec, add, remove):
+        tags = [w for w in rec["tags"] if w not in remove]
+        for w in add:
+            if w not in tags:
+                tags.append(w)
+        rec["tags"] = tags
 
     def _append(self, ev):
         ev["ts"] = time.strftime("%Y-%m-%d %H:%M:%S")
         with self.journal.open("a", encoding="utf-8") as f:
             f.write(json.dumps(ev) + "\n")
+
+    def journal_event(self, ev):
+        self._append(ev)
 
     def save_state(self):
         self.state_file.write_text(json.dumps(self.state, indent=1), encoding="utf-8")
@@ -100,51 +130,75 @@ class Store:
     # ---------- images ----------
 
     def alive(self, i):
-        return i is not None and i in self.images and not self.images[i].get("gone")
+        """Exists and not purged (archived images ARE alive - hidden by a word)."""
+        return i is not None and i in self.images and not self.images[i].get("purged")
 
     def alive_ids(self):
         return sorted(i for i in self.images if self.alive(i))
 
+    def tags(self, i):
+        return self.images[i]["tags"] if self.alive(i) else []
+
+    def has(self, i, word):
+        return word in self.tags(i)
+
+    def is_archived(self, i):
+        return self.has(i, ARCHIVED)
+
+    def with_word(self, word):
+        return [i for i in self.alive_ids() if word in self.images[i]["tags"]]
+
+    def pins(self):
+        return self.with_word(PINNED)
+
+    def words(self):
+        """{word: count} over alive images."""
+        out = {}
+        for i in self.alive_ids():
+            for w in self.images[i]["tags"]:
+                out[w] = out.get(w, 0) + 1
+        return out
+
     def path(self, i):
         return self.images_dir / f"{i}.png"
-
-    def rel(self, i):
-        """The global image name '<project>/images/<id>.png'."""
-        return f"{self.name}/images/{i}.png"
 
     def staged_path(self, i):
         return INPUT_DIR / "evolve" / self.name / f"{i}.png"
 
     def stage_ref(self, i):
-        """Make store image `i` loadable by ComfyUI under a DURABLE name.
-
-        LoadImage is sandboxed to the input dir, so the bytes must appear
-        inside it - as one hardlink per image, addressed
-        input/evolve/<project>/<id>.png, created once and left alone (the
-        old overwritten slot names made every embedded payload
-        unreproducible one round later). Nothing ever WRITES through the
-        staged path; archive() removes the link with the image."""
+        """Make image `i` loadable by ComfyUI under a DURABLE name: one
+        hardlink per image at input/evolve/<root-name>/<id>.png, created
+        once and left alone. Nothing ever WRITES through the staged path."""
         link_or_copy(self.path(i), self.staged_path(i))
         return f"evolve/{self.name}/{i}.png"
 
-    def add_image(self, img, source, recipe=None, parents=None, sha1=None,
-                  chunks=None, inputs=None):
-        """Persist a PIL image (already RGB) under a fresh id.
+    def birth_tags(self, mother=None):
+        """A new image's words: the mother's minus archived/pinned, plus the
+        settings' default tags (fiat/import: default tags only)."""
+        inherited = [w for w in self.tags(mother) if w not in NOT_INHERITED] if mother else []
+        return clean_tags(inherited + load_settings()["default_tags"])
 
-        chunks: text chunks to PRESERVE from the render (ComfyUI's `prompt`
-        payload - which the server augments with is_changed sha256s - and
-        optionally `workflow` geometry). inputs: staged-name -> store-id map
-        for the render's LoadImage refs. The `evolve` chunk carries UI state
-        + that map; NO ancestry - the journal holds the parents."""
+    def add_image(self, img, source, recipe=None, parents=None, sha1=None,
+                  chunks=None, inputs=None, tags=None, description=None, ts=None):
+        """Persist a PIL image (already RGB) under a fresh id, with its
+        words. chunks: text chunks to PRESERVE; inputs: staged-name ->
+        store-id map. The `evolve` chunk carries UI state + that map, NO
+        ancestry - the journal holds the parents. description defaults to
+        the recipe prompt (seeded, never cascaded)."""
         with self.lock:
             i = self.next_id
             self.next_id += 1
             all_chunks = dict(chunks or {})
             all_chunks["evolve"] = evolve_chunk(self.name, i, source, recipe, inputs)
             write_png(img, self.path(i), all_chunks)
+            if description is None:
+                description = ((recipe or {}).get("prompt") or "").strip()
             rec = {"t": "image", "id": i, "file": f"{i}.png", "source": source,
                    "w": img.width, "h": img.height, "sha1": sha1,
-                   "recipe": recipe, "parents": parents or []}
+                   "recipe": recipe, "parents": parents or [],
+                   "tags": clean_tags(tags or []), "description": description}
+            if ts:
+                rec["ts_origin"] = ts
             self._append(rec)
             self.images[i] = rec
             return i
@@ -155,50 +209,122 @@ class Store:
                 return i
         return None
 
-    def import_bytes(self, data, source="import"):
+    def import_bytes(self, data, source="import", tags=None):
         """Persist pasted/dropped/fetched image bytes: dedupe by content
-        hash, flatten alpha onto white. LAYER 0 (user rule 2026-08-24: NEVER
-        destroy image metadata on import): every incoming text chunk is
-        re-embedded verbatim (except a foreign `evolve` chunk - ours must
-        win); glean_recipe() maps what it can onto UI fields, so picking an
-        import restores at least its prompt. Returns (id, was_new)."""
+        hash, flatten alpha onto white, PRESERVE every text chunk (layer 0)
+        except a foreign `evolve` chunk, glean a recipe. Words = default
+        tags (+ any given). Returns (id, was_new)."""
         sha1 = sha1_of(data)
         existing = self.find_sha1(sha1)
         if existing is not None:
+            if tags:
+                self.tag([existing], add=tags)
             return existing, False
         img, raw = open_bytes(data)
         recipe = glean_recipe(raw)
         keep = {k: v for k, v in raw.items() if k != "evolve"}
-        i = self.add_image(flattened_rgb(img), source, recipe=recipe, sha1=sha1, chunks=keep)
+        i = self.add_image(flattened_rgb(img), source, recipe=recipe, sha1=sha1, chunks=keep,
+                           tags=self.birth_tags() + list(tags or []))
         return i, True
 
-    def archive(self, ids):
-        """ARCHIVE, never delete: files move to <project>/archive/,
-        restorable by hand. The staged hardlink must go too or the bytes
-        never free. One journal event."""
-        ids = [i for i in ids if self.alive(i)]
-        if not ids:
-            return 0
-        arch = self.dir / "archive"
-        arch.mkdir(exist_ok=True)
-        for i in ids:
-            try:
-                self.path(i).rename(arch / f"{i}.png")
-            except OSError:
-                self.path(i).unlink(missing_ok=True)
-            self.staged_path(i).unlink(missing_ok=True)
-            self.images[i]["gone"] = True
-        self._append({"t": "gc", "ids": ids})
-        return len(ids)
+    # ---------- tags & descriptions ----------
 
-    def journal_event(self, ev):
-        self._append(ev)
+    def descendants(self, i):
+        """The mother-line subtree under i (parent-0 edges only), excluding
+        i, alive only."""
+        kids = {}
+        for j, r in self.images.items():
+            if not self.alive(j):
+                continue
+            ps = r.get("parents") or []
+            if ps:
+                kids.setdefault(ps[0], []).append(j)
+        out, todo = [], list(kids.get(i, []))
+        seen = {i}
+        while todo:
+            x = todo.pop()
+            if x in seen:
+                continue
+            seen.add(x)
+            out.append(x)
+            todo.extend(kids.get(x, []))
+        return sorted(out)
+
+    def tag(self, ids, add=(), remove=(), cascade=False):
+        """Add/remove words on ids; with cascade also on their descendants
+        (ADD skips archived descendants, REMOVE does not). One journal
+        event listing every id touched. Returns the touched ids."""
+        add, remove = clean_tags(add), clean_tags(remove)
+        with self.lock:
+            base = [i for i in ids if self.alive(i)]
+            add_ids, rm_ids = set(base), set(base)
+            if cascade:
+                for i in base:
+                    for d in self.descendants(i):
+                        rm_ids.add(d)
+                        if not self.is_archived(d):
+                            add_ids.add(d)
+            touched = []
+            for i in sorted(add_ids | rm_ids):
+                r = self.images[i]
+                a = add if i in add_ids else []
+                rm = remove if i in rm_ids else []
+                before = list(r["tags"])
+                self._apply_tags(r, a, rm)
+                if r["tags"] != before:
+                    touched.append(i)
+            if touched:
+                self._append({"t": "tag", "ids": touched, "add": add, "remove": remove,
+                              "cascade": bool(cascade), "from": base})
+            return touched
+
+    def describe(self, i, text):
+        with self.lock:
+            if not self.alive(i):
+                return False
+            text = (text or "").strip()
+            if self.images[i]["description"] != text:
+                self.images[i]["description"] = text
+                self._append({"t": "describe", "id": i, "description": text})
+            return True
+
+    def ancestors_closure(self, ids):
+        keep, todo = set(), list(ids)
+        while todo:
+            i = todo.pop()
+            if i in keep or not self.alive(i):
+                continue
+            keep.add(i)
+            todo.extend(self.images[i].get("parents") or [])
+        return keep
+
+    def garbage(self):
+        """Archived AND not an ancestor of any unarchived image - the only
+        integrity rule that survives: provenance closure of what is live."""
+        live = [i for i in self.alive_ids() if not self.is_archived(i)]
+        keep = self.ancestors_closure(live)
+        return [i for i in self.alive_ids() if self.is_archived(i) and i not in keep]
+
+    def purge(self):
+        """DELETE the files of garbage images (+ staged links). Explicit,
+        irreversible; the journal keeps their records (purged)."""
+        with self.lock:
+            ids = self.garbage()
+            for i in ids:
+                self.path(i).unlink(missing_ok=True)
+                self.staged_path(i).unlink(missing_ok=True)
+                self.images[i]["purged"] = True
+            if ids:
+                self._append({"t": "purge", "ids": ids})
+            self.forget(ids)
+            self.save_state()
+            return ids
 
     # ---------- live state ----------
 
     def set_working(self, i):
-        """Set the WI. NO history side effect (v2): the WI is a cheap
-        browsing target; an image enters History only by being BRED FROM."""
+        """Set the WI. NO history side effect (v2): an image enters History
+        only by being BRED FROM."""
         with self.lock:
             if i is not None and not self.alive(i):
                 raise ValueError(f"no such image {i}")
@@ -207,8 +333,8 @@ class Store:
 
     def hist_append(self, i):
         """History = log of images actually consumed by a generator:
-        Generate appends its ref0, Camera its source. Consecutive duplicates
-        collapse; a later re-use appends again."""
+        Generate appends its ref0, Camera its source; consecutive dupes
+        collapse."""
         with self.lock:
             if i is None or not self.alive(i):
                 return
@@ -222,8 +348,6 @@ class Store:
         return t if t in TABS else "create"
 
     def cands(self, tab=None):
-        """The candidates list for one tab (default: the active tab).
-        Outputs belong to the tab that generated them."""
         return self.state["candidates"][tab if tab in TABS else self.active_tab()]
 
     def live_set(self):
@@ -235,7 +359,7 @@ class Store:
 
     def forget(self, ids):
         """Drop ids from every live slot (candidates, WI, ref0, refs,
-        history) - the cadence every archive path needs. Caller saves."""
+        history). Caller saves."""
         ids = set(ids)
         s = self.state
         for lst in s["candidates"].values():
@@ -250,14 +374,14 @@ class Store:
 
     def place_slot(self, i, index):
         """Put image i into the ACTIVE tab's candidate slot `index` (moving
-        it if it is already a candidate anywhere or pinned)."""
+        it if it is already a candidate anywhere; unpinning it)."""
         with self.lock:
             c = self.cands()
             for lst in self.state["candidates"].values():
                 if i in lst:
                     lst.remove(i)
-            if i in self.state["pins"]:
-                self.state["pins"].remove(i)
+            if self.has(i, PINNED):
+                self.tag([i], remove=[PINNED])
             if index < len(c):
                 c[index] = i
             else:
@@ -265,26 +389,20 @@ class Store:
             del c[self.state["slots"]:]
             self.save_state()
 
-    def pin(self, i, on, index=None):
-        """P is THE keep decision. Pinning MOVES an image off the candidate
-        sheet onto the Pinned sheet; unpinning drops it from the sheet."""
+    def pin(self, i, on):
+        """P is THE keep decision: the word `pinned`. Pinning MOVES an image
+        off the candidate sheet; unpinning drops the word."""
         with self.lock:
-            pins = self.state["pins"]
+            if not self.alive(i):
+                return
             if on:
-                if not self.alive(i):
-                    return
-                if i in pins:
-                    pins.remove(i)
                 for lst in self.state["candidates"].values():
                     if i in lst:
                         lst.remove(i)
-                if index is None or index >= len(pins):
-                    pins.append(i)
-                else:
-                    pins.insert(index, i)
-            elif i in pins:
-                pins.remove(i)
-            self.save_state()
+                self.tag([i], add=[PINNED], remove=[ARCHIVED])
+                self.save_state()
+            else:
+                self.tag([i], remove=[PINNED])
 
     def set_slots(self, n):
         with self.lock:
@@ -292,13 +410,8 @@ class Store:
             del self.cands()[self.state["slots"]:]
             self.save_state()
 
-    def begin_round(self, tab, controls=None):
-        """Start of a generator round: (optionally) adopt the controls,
-        clear the tab's outputs (after the caller swept them). Returns the
-        number of slots to fill."""
+    def begin_round(self, tab):
         with self.lock:
-            if controls is not None:
-                self.state["controls"] = controls
             self.state["candidates"][tab] = []
             self.save_state()
             return self.state["slots"]
@@ -317,19 +430,22 @@ class Store:
             self.save_state()
 
     def meta(self, i):
-        """The per-image record the UI needs (no gc verdict - see lineage)."""
         r = self.images[i]
         return {"id": i, "w": r["w"], "h": r["h"], "source": r["source"],
                 "ts": r.get("ts"), "recipe": r.get("recipe"),
-                "parents": r.get("parents"), "gone": bool(r.get("gone")),
+                "parents": r.get("parents"), "tags": list(r["tags"]),
+                "description": r.get("description") or "",
+                "archived": ARCHIVED in r["tags"], "purged": bool(r.get("purged")),
                 "path": str(self.path(i))}
 
     def snapshot(self):
         """This store's part of the UI state snapshot."""
         with self.lock:
             s = self.state
+            alive = self.alive_ids()
+            pins = [i for i in alive if PINNED in self.images[i]["tags"]]
             ids = set().union(*s["candidates"].values()) | set(self.history) | \
-                set(s["pins"]) | self.live_set()
+                set(pins) | self.live_set()
             meta = {}
             for i in ids:
                 r = self.images[i]
@@ -337,22 +453,14 @@ class Store:
                            "ts": r.get("ts"),
                            "recipe": r.get("recipe"), "parents": r.get("parents"),
                            "path": str(self.path(i))}
-            return {"project": self.name, "color": self.color,
-                    "all_ids": self.alive_ids(),
+            return {"root_name": self.name,
+                    "all_ids": alive,
+                    "tags": {i: self.images[i]["tags"] for i in alive},
+                    "descriptions": {i: self.images[i]["description"] for i in alive
+                                     if self.images[i]["description"]},
+                    "words": self.words(),
                     "working": s["working"], "slots": s["slots"],
-                    "candidates": s["candidates"], "pins": s["pins"],
+                    "candidates": s["candidates"], "pins": pins,
                     "controls": s["controls"],
                     "history": [h for h in reversed(self.history) if self.alive(h)],
                     "meta": meta, "last_base_seed": s.get("last_base_seed")}
-
-
-def open_project(name):
-    """Create-or-open a project. Its total and single effect is the path
-    context: <root>/<name>/images/NNN.png etc.; state/journal swap because
-    those files live under the path (v4 doctrine)."""
-    d = project_dir(name)                      # validates the name
-    (d / "images").mkdir(parents=True, exist_ok=True)
-    store = Store(d)
-    store.color = project_color(name)
-    save_config(last_project=name)
-    return store

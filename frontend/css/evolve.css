@@ -182,3 +182,19 @@ main{display:grid;grid-template-rows:auto 1fr auto;height:100vh;min-width:0}
 #gen{background:var(--acc);color:#000;font-weight:600;border:none;border-radius:4px;width:170px;height:44px;font-size:14px;cursor:pointer;flex:none}
 #gen:disabled{background:#665;color:#aaa;cursor:not-allowed}
 #gen.stop{background:#c55;color:#fff}
+
+/* ---------- tags & views (2026-08-25) ---------- */
+#wordbar{display:flex;flex-wrap:wrap;gap:4px;padding:4px 8px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:10px;border:1px solid var(--line);background:#111;color:var(--fg);font-size:12px;cursor:pointer;user-select:none;white-space:nowrap}
+.chip .cnt{opacity:.55;font-size:11px}
+.chip.on{border-color:var(--focus);background:rgba(88,166,255,.18)}
+.chip.arch{border-style:dashed;opacity:.8}
+.chip .x{opacity:.6;margin-left:2px;font-size:13px;line-height:1}
+.chip .x:hover{opacity:1;color:#f88}
+.iw-tags{display:flex;flex-wrap:wrap;gap:4px;align-items:center;max-width:520px}
+.iw-tagin{background:#111;color:var(--fg);border:1px solid var(--line);padding:2px 6px;font-size:12px;width:130px;border-radius:10px}
+.iw-desc{background:#111;color:var(--fg);border:1px solid var(--line);padding:3px 6px;font-size:12px;width:420px;min-height:44px;resize:vertical;font-family:inherit}
+.iw-casc{font-size:11px;opacity:.75;white-space:nowrap}
+#deftags{background:#111;color:var(--fg);border:1px solid var(--line);padding:2px 5px}
+#rootname{font-size:11px;opacity:.6;align-self:center;padding-right:8px}
+#infowin{max-width:600px}
