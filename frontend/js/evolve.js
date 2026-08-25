@@ -312,7 +312,7 @@ function render() {
   Sel.apply();
 }
 
-// ---------- asset browser (v4): a view over root/assets.json ----------
+// ---------- asset browser (v4): a view over root/loras.json + the dataset words ----------
 let mode = localStorage.getItem('mode') || 'evolver';
 let curAsset = localStorage.getItem('asset:last') || null;
 function setMode(m) {

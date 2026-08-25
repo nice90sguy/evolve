@@ -1,6 +1,6 @@
 """asset.py - assets are DATA (v4): a name and its LoRAs, per model family.
 
-<root>/assets.json = [{name, loras: [{path, family}]}]. `path` is root-
+<root>/loras.json = [{name, loras: [{path, family}]}]. `path` is root-
 relative posix and lives at loras/<name>/<family>/<file>.safetensors -
 the family is recorded explicitly AND must agree with the directory (a
 LoRA is specific to its model; the dropdown only ever offers the active
@@ -17,6 +17,7 @@ from model_family import ModelFamily, parse_model_family
 from project import NAME_RE, is_valid_name, read_json, root, root_rel, write_json
 
 DATASET_PREFIX = "lora_dataset_"
+LORAS_FILE = "loras.json"        # was assets.json (renamed 2026-08-25)
 
 
 def lora_dir(name, family):
@@ -70,20 +71,20 @@ class AssetsFormatError(RuntimeError):
 
 def load_assets():
     """[Asset]. Raises AssetsFormatError on a pre-family file."""
-    raw = read_json(root() / "assets.json", [])
+    raw = read_json(root() / LORAS_FILE, [])
     out = []
     for a in raw:
         try:
             out.append(Asset.model_validate(a))
         except ValidationError as e:
             raise AssetsFormatError(
-                f"assets.json entry {a.get('name')!r} is not in the per-family format "
+                f"{LORAS_FILE} entry {a.get('name')!r} is not in the per-family format "
                 f"({e.errors()[0].get('msg')}); run tools/migrate_projects.py --loras") from e
     return out
 
 
 def save_assets(assets):
-    write_json(root() / "assets.json", [a.model_dump(mode="json") for a in assets])
+    write_json(root() / LORAS_FILE, [a.model_dump(mode="json") for a in assets])
 
 
 def find_asset(assets, name):

@@ -1,6 +1,6 @@
 """Model family as a shared, validated constraint: ModelFamily, the pydantic
 configs (Generate/Camera/Train), per-family asset LoRA entries, dropdown
-resolution and detect_family. Run: python tests/test_family.py"""
+resolution and detect_family. Run: python tests/test_model_family.py"""
 import shutil
 import sys
 import tempfile
@@ -15,9 +15,9 @@ import asset
 import lora
 import project
 from camera import CameraConfig
-from model_family import ModelFamily, family_info, parse_model_family
 from generate import GenerateConfig
 from lora_train.common import detect_family
+from model_family import ModelFamily, family_info, parse_model_family
 from training import TrainConfig
 
 
@@ -30,7 +30,8 @@ def raises(fn, *a, **kw):
 
 
 def test_family_enum():
-    assert parse_model_family("klein") is ModelFamily.KLEIN and parse_model_family(ModelFamily.ZIMAGE) is ModelFamily.ZIMAGE
+    assert parse_model_family("klein") is ModelFamily.KLEIN
+    assert parse_model_family(ModelFamily.ZIMAGE) is ModelFamily.ZIMAGE
     assert parse_model_family("nope", ModelFamily.KLEIN) is ModelFamily.KLEIN
     assert "unknown model family" in raises(parse_model_family, "sdxl")
     assert family_info("illustrious").trainable is False and family_info("klein").references is True
@@ -70,32 +71,34 @@ def test_assets_and_dropdown():
         (rt / "loras" / "julie" / "zimage").mkdir(parents=True)
         (rt / "loras" / "loose" / "klein").mkdir(parents=True)
         for p in ("julie/klein/julie_v001_x_comfy.safetensors", "julie/klein/julie_v002_x_comfy.safetensors",
+                  "julie/klein/julie_v002_x.safetensors",                   # musubi-native: never offered
                   "julie/zimage/julie_v001_z_comfy.safetensors", "loose/klein/other_comfy.safetensors",
                   "julie/klein/julie_v002_x_comfy.safetensors.bak"):
             (rt / "loras" / p).write_bytes(b"x")
-        (rt / "loras" / "stray.safetensors").write_bytes(b"x")     # not under a family dir: ignored
         a = asset.Asset(name="julie")
         assert asset.apply_op([a], "add_lora", "julie", "loras/julie/klein/julie_v001_x_comfy.safetensors") is None
         assert asset.apply_op([a], "add_lora", "julie", "loras/julie/klein/julie_v002_x_comfy.safetensors") is None
         assert asset.apply_op([a], "add_lora", "julie", "loras/julie/zimage/julie_v001_z_comfy.safetensors") is None
         bad = asset.apply_op([a], "add_lora", "julie", "loras/julie/zimage/julie_v001_z_comfy.safetensors", "klein")
         assert bad and "directory says" in bad
+        bad = asset.apply_op([a], "add_lora", "julie", "loras/stray.safetensors")
+        assert bad and "loras/<asset>/<family>/" in bad
         asset.save_assets([a])
         assets = asset.load_assets()
         assert [e.family for e in assets[0].loras] == [ModelFamily.KLEIN, ModelFamily.KLEIN, ModelFamily.ZIMAGE]
+        # the dropdown: ONE choice per asset per family - the alias; no files, no old versions
         d = lora.list_loras()
-        assert d["klein"] == ["julie", "loras/loose/klein/other_comfy.safetensors"], d
-        assert d["zimage"] == ["julie"] and d["illustrious"] == []
+        assert d == {"klein": ["julie"], "zimage": ["julie"], "illustrious": []}, d
         assert lora.resolve_lora("julie", "klein").name == "julie_v002_x_comfy.safetensors"   # newest for the family
         assert lora.resolve_lora("julie", "zimage").name == "julie_v001_z_comfy.safetensors"
         assert lora.resolve_lora("julie", "illustrious") is None
-        assert lora.resolve_lora("loras/loose/klein/other_comfy.safetensors", "zimage") is None  # wrong family
-        assert lora.resolve_lora("loras/loose/klein/other_comfy.safetensors", "klein") is not None
-        # a pre-family assets.json is refused loudly
-        project.write_json(rt / "assets.json", [{"name": "julie", "loras": ["loras/julie/x.safetensors"]}])
+        assert lora.resolve_lora("loras/loose/klein/other_comfy.safetensors", "klein") is None  # never a raw file
+        assert lora.resolve_lora("nobody", "klein") is None
+        # a pre-family loras.json is refused loudly
+        project.write_json(rt / "loras.json", [{"name": "julie", "loras": ["loras/julie/x.safetensors"]}])
         try:
             asset.load_assets()
-            raise AssertionError("legacy assets accepted")
+            raise AssertionError("legacy entries accepted")
         except asset.AssetsFormatError as e:
             assert "migrate_projects.py --loras" in str(e)
         # detect_family from file metadata / keys

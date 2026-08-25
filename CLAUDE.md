@@ -775,16 +775,20 @@ Klein-only, refs need a references-family, a LoRA needs a lora-family),
 refused before anything runs; NB pydantic `pattern` is a search, use a
 validator for full-match), `asset.Asset`/`LoraEntry`. **A LoRA is specific
 to its model**: files live at `<root>/loras/<asset>/<family>/*.safetensors`,
-`assets.json` = `[{name, loras: [{path, family}]}]` (family recorded AND
-must agree with the directory), the dropdown is `{family: [entries]}` and
-only shows the active family's, `resolve_lora(name, family)` = newest of
-the asset's LoRAs FOR THAT FAMILY, trainers write into the family subdir.
+`loras.json` (renamed from assets.json 2026-08-25) = `[{name, loras:
+[{path, family}]}]` (family recorded AND must agree with the directory).
+THE DROPDOWN OFFERS EXACTLY ONE CHOICE PER ASSET PER FAMILY: the asset
+NAME, resolving to the newest LoRA recorded for that family - never raw
+files, never older versions, never musubi-native files (user rule: "never
+give the user a choice beyond the one in loras.json"). `list_loras()` =
+`{family: [names]}`, `resolve_lora(name, family)`; trainers write into
+the family subdir and record the file.
 `lora_train.common.detect_family()` reads a file's own metadata
 (`ss_network_module` / `ss_base_model_version`, key-name sniff fallback) -
 migration only; `tools/migrate_projects.py --loras` moved the user's files
 (BOTH gene_tierney and lizabeth_scott are Klein bakes per their metadata -
 `flux_2_klein_9b`; lizabeth was NOT a Z-Image LoRA). A pre-family
-assets.json makes evolve.py refuse to start with the pointer.
+loras.json makes evolve.py refuse to start with the pointer.
 `tests/test_model_family.py` covers all of it.
 
 ## Tags & views — BUILT 2026-08-25 (spec below, as agreed; v1)

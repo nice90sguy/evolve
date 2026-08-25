@@ -4,7 +4,7 @@ with auditable heredity, driving ComfyUI headlessly.
     python evolve.py --root D:/evolve_root [--port 8189]
 
 --root is the ONE store (mandatory - nothing depends on the shell's cwd):
-images/, journal.jsonl, state.json, config.json, assets.json, loras/,
+images/, journal.jsonl, state.json, config.json, loras.json, loras/,
 _train/, _debug/. Images are grouped, filtered and given meaning by TAGS;
 there are no project subdirectories. ComfyUI must already be running at
 127.0.0.1:8188; it is never launched or killed from here. Generation
@@ -49,7 +49,7 @@ def main():
                          f"{root}  first (tags replaced projects, 2026-08-25)")
     store = Store(root)
     try:
-        asset.load_assets()          # fail fast on a pre-family assets.json
+        asset.load_assets()          # fail fast on a pre-family loras.json
     except asset.AssetsFormatError as e:
         raise SystemExit(str(e))
     app = create_app(store, embed_workflow=args.embed_workflow)

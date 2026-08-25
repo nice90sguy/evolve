@@ -17,7 +17,7 @@ python evolve.py --root D:/evolve_root [--port 8189] [--embed-workflow]
 `--root` is mandatory and is the ONLY location the app depends on (nothing is
 cwd-relative). Under it: `images/NNN.png` (every image, ids global),
 `journal.jsonl`, `state.json`, `config.json` (settings: `default_tags`),
-`assets.json` (`[{name, loras[]}]`), `loras/<name>/`, `_train/`, `_debug/`.
+`loras.json` (`[{name, loras: [{path, family}]}]`), `loras/<name>/<family>/`, `_train/`, `_debug/`.
 
 **Tags.** Images are grouped, filtered and given meaning by words the user
 puts on them (`julie`, `possible`, `lora_dataset_julie`, `pinned`,

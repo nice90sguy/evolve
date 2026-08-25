@@ -201,7 +201,8 @@ def migrate(root):
                 elif d and cur != d:
                     report.append(f"  #{i}: kept description {store.images[i]['description']!r}, "
                                   f"asset {a['name']} said {d!r}")
-    project.write_json(root / "assets.json", new_assets)
+    project.write_json(root / "loras.json", new_assets)
+    (root / "assets.json").unlink(missing_ok=True)
     report.extend(migrate_loras(root))
     for h in hist_events:
         store.hist_append(h)
@@ -224,7 +225,8 @@ def migrate_loras(root):
     from lora_train.common import detect_family
     root = Path(root)
     report = []
-    raw = project.read_json(root / "assets.json", [])
+    src = root / "loras.json" if (root / "loras.json").exists() else root / "assets.json"
+    raw = project.read_json(src, [])
     moved = {}
     lr = root / "loras"
     for adir in sorted(lr.iterdir()) if lr.is_dir() else []:
@@ -267,8 +269,10 @@ def migrate_loras(root):
                     fam = famv.value
             entries.append({"path": path, "family": fam})
         out.append({"name": a["name"], "loras": entries})
-    project.write_json(root / "assets.json", out)
-    report.append(f"assets.json: {len(out)} asset(s), per-family LoRA entries")
+    project.write_json(root / "loras.json", out)
+    if src.name == "assets.json":
+        src.unlink(missing_ok=True)
+    report.append(f"loras.json: {len(out)} asset(s), per-family LoRA entries")
     return report
 
 
@@ -293,7 +297,7 @@ def main():
     ap.add_argument("--tag", action="append", default=[], help="word(s) to put on scanned images")
     ap.add_argument("--loras", action="store_true",
                     help="only move loras/<asset>/*.safetensors into per-family subdirs "
-                         "and rewrite assets.json entries as {path, family}")
+                         "and rewrite the entries as loras.json {path, family}")
     a = ap.parse_args()
     project.set_root(a.root)
     if a.loras:

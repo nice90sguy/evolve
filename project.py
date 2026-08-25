@@ -4,7 +4,7 @@
     <root>/journal.jsonl        append-only: image / tag / describe / hist / purge
     <root>/state.json           the live UI state
     <root>/config.json          app settings (default_tags, ...)
-    <root>/assets.json          [{name, loras[]}]  (see asset.py)
+    <root>/loras.json           [{name, loras: [{path, family}]}]  (see asset.py)
     <root>/loras/<name>/        trained LoRAs
     <root>/_train/<name>/       transient datasets
     <root>/_debug/              last_payload.json
