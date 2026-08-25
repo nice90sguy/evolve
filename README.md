@@ -47,7 +47,7 @@ Runtime (what `evolve.py` needs), dependency order bottom-up:
 | `templates/*.json` | the four graphs, runnable as-is: `flux_klein_9b`, `zimage_turbo`, `illustrious_sdxl`, `qwen_edit_camera` |
 | `build_payload/` | template-driven builders, one per family (`flux_klein`, `zimage`, `illustrious`, `qwen_edit`) |
 | `controls.py` | the generator controls table (defaults, sanitise, restore-from-recipe) |
-| `store.py` | `Store`: images + journal + live state; `open_project` |
+| `store.py` | `Store`: images + journal + live state, tags (birth copy, cascade), descriptions, garbage/purge |
 | `trash.py` | discard, sweep, prune, purge — in tag vocabulary |
 | `asset.py`, `lora.py`, `lineage.py` | assets `{name, loras}` + dataset word/captions; LoRA dropdown resolution; siblings/family |
 | `generate.py`, `camera.py`, `training.py` | the operators: `do_generate(GenerateConfig)`, `do_camera(CameraConfig)`, `do_training(TrainConfig)` |
