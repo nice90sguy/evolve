@@ -19,7 +19,7 @@ from comfy_client import free_vram, queue, wait
 from model_family import DEFAULT_MODEL_FAMILY, ModelFamily, family_info, parse_model_family
 from image_meta import harvest_chunks
 from image_utils import snap16
-from lora import resolve_lora
+from lora import resolve
 from trash import sweep
 
 MAX_VARY = 0.5      # additive randn on the reference latent: useful band 0.1-0.3
@@ -106,7 +106,7 @@ def do_generate(store, cfg, progress=None, should_abort=None, embed_workflow=Fal
         inputs[name] = i
     prompt = (WHITE_BG_PREFIX + cfg.prompt) if cfg.whitebg else cfg.prompt
     base = cfg.seed or random_seed()
-    lora_abs = resolve_lora(cfg.lora, cfg.family) if cfg.lora else None
+    lora_abs = resolve(cfg.lora, cfg.family) if cfg.lora else None
     if cfg.lora and lora_abs is None:
         raise FileNotFoundError(f"no {cfg.family} LoRA for {cfg.lora!r}")
     lock = cfg.lock if refs else None

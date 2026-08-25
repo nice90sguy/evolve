@@ -107,9 +107,9 @@ let famData = null, famKey = null; // Genealogy sheets cache (anchored to the WI
 const RW = ['working', 'ref', 'ref0', 'slot', 'pin'];   // the only WRITABLE containers
 // The strip registry: name -> getter. FLAT by design - a getter carries its
 // own availability check, so there is no ordering to get wrong (the old
-// if-chain let a genealogy guard swallow the grid/asset lookups). Contract:
+// if-chain let a genealogy guard swallow the grid/lora lookups). Contract:
 // null = "not a list" (unknown name, or its source isn't loaded); an array
-// is a list even when empty; entries may be null ids (foreign asset paths).
+// is a list even when empty.
 const LISTS = {
   hist:  () => S.history,
   pin:   () => S.pins,
@@ -118,7 +118,7 @@ const LISTS = {
   gsib:  () => famData && famData.siblings.map(x => x.id),
   gkid:  () => famData && famData.children.map(x => x.id),
   grid:  () => (gridName && gridName !== 'grid') ? listFor(gridName) : null,
-  asset: () => { const a = curAssetObj(); return a ? datasetIds(a) : null; },
+  lora:  () => { const x = curLora(); return x ? datasetIds(x) : null; },
 };
 function listFor(name) {
   if (!S) return null;
@@ -306,54 +306,55 @@ function render() {
   genUI();
   statusBar();
   renderGenealogy();
-  renderAssets();
+  renderLoras();
   trainUI();
   renderGrid();
   Sel.apply();
 }
 
-// ---------- asset browser (v4): a view over root/loras.json + the dataset words ----------
+// ---------- LoRA editor: images grouped by a LoRA's dataset word, with
+// descriptions; remove the word, train the LoRA ----------
 let mode = localStorage.getItem('mode') || 'evolver';
-let curAsset = localStorage.getItem('asset:last') || null;
+let curLoraName = localStorage.getItem('lora:last') || null;
 function setMode(m) {
   mode = m;
   localStorage.setItem('mode', m);
   $('#nav-evolver').classList.toggle('on', m === 'evolver');
-  $('#nav-assets').classList.toggle('on', m === 'assets');
-  $('#genpanel').style.display = m === 'assets' ? 'none' : '';
-  $('#assets').hidden = m !== 'assets';
+  $('#nav-loras').classList.toggle('on', m === 'loras');
+  $('#genpanel').style.display = m === 'loras' ? 'none' : '';
+  $('#loras').hidden = m !== 'loras';
   if (S) render();
 }
 $('#nav-evolver').addEventListener('click', () => setMode('evolver'));
-$('#nav-assets').addEventListener('click', () => setMode('assets'));
+$('#nav-loras').addEventListener('click', () => setMode('loras'));
 
-function curAssetObj() {
-  return (S.assets || []).find(a => a.name === curAsset) || (S.assets || [])[0] || null;
+function curLora() {
+  return (S.loras || []).find(x => x.name === curLoraName) || (S.loras || [])[0] || null;
 }
 const dsTag = a => 'lora_dataset_' + a.name;
-// the dataset = every unarchived image carrying the asset's word
+// the dataset = every unarchived image carrying the LoRA's word
 function datasetIds(a) {
   const w = dsTag(a);
   return (S.all_ids || []).filter(id => { const t = S.tags[id] || []; return t.includes(w) && !t.includes('archived'); });
 }
-function renderAssets() {
-  if (mode !== 'assets' || !S) return;
-  const sel = $('#assetsel');
-  const a = curAssetObj();
-  curAsset = a ? a.name : null;
+function renderLoras() {
+  if (mode !== 'loras' || !S) return;
+  const sel = $('#lorasel');
+  const a = curLora();
+  curLoraName = a ? a.name : null;
   if (document.activeElement !== sel) {
-    sel.innerHTML = (S.assets || []).map(x => `<option>${x.name}</option>`).join('');
+    sel.innerHTML = (S.loras || []).map(x => `<option>${x.name}</option>`).join('');
     if (a) sel.value = a.name;
   }
   // never rebuild the grid under an in-progress caption edit
-  if ($('#agrid').contains(document.activeElement)) return;
-  const g = $('#agrid');
+  if ($('#lgrid').contains(document.activeElement)) return;
+  const g = $('#lgrid');
   g.innerHTML = '';
-  if (!a) { g.innerHTML = '<span class="hint">no assets yet — “+ new” creates one</span>'; return; }
+  if (!a) { g.innerHTML = '<span class="hint">no LoRAs yet — “+ new” creates one</span>'; return; }
   datasetIds(a).forEach((id, k) => {
     const t = document.createElement('div');
     t.className = 'atile';
-    t.dataset.target = 'asset';
+    t.dataset.target = 'lora';
     t.dataset.index = k;
     t.tabIndex = 0;
     const im = thumb(id);
@@ -387,12 +388,12 @@ function trainUI() {
   $('#maketrain').disabled = running || !!(S && S.busy);
   $('#trainstop').hidden = !running;
   $('#trainstat').textContent = !t ? '' :
-    t.running ? `training ${t.asset} (${t.family}) · ${Math.floor(t.elapsed / 60)}m${t.elapsed % 60}s · tail -f ${t.log}` :
-    t.error ? `${t.asset}: ${t.error}` : `${t.asset}: done ✓`;
+    t.running ? `training ${t.name} (${t.family}) · ${Math.floor(t.elapsed / 60)}m${t.elapsed % 60}s · tail -f ${t.log}` :
+    t.error ? `${t.name}: ${t.error}` : `${t.name}: done ✓`;
 }
 $('#maketrain').addEventListener('click', async () => {
-  const a = curAssetObj();
-  if (!a) { flash('create an asset first'); return; }
+  const a = curLora();
+  if (!a) { flash('create a LoRA first'); return; }
   const fam = $('#trainfam').value;
   if (!confirm(`Train "${a.name}" (${fam}) on ${datasetIds(a).length} image(s)?` +
       String.fromCharCode(10) + 'This runs on the GPU and blocks generation until done.')) return;
@@ -405,14 +406,14 @@ $('#trainstop').addEventListener('click', async () => {
   await api('train_abort', {});
   refresh();
 });
-$('#assetsel').addEventListener('change', () => {
-  curAsset = $('#assetsel').value;
-  localStorage.setItem('asset:last', curAsset);
-  renderAssets();
+$('#lorasel').addEventListener('change', () => {
+  curLoraName = $('#lorasel').value;
+  localStorage.setItem('lora:last', curLoraName);
+  renderLoras();
 });
-$('#assetfolder').addEventListener('click', async () => {
-  const a = curAssetObj();
-  if (!a) { flash('create an asset first'); return; }
+$('#lorafolder').addEventListener('click', async () => {
+  const a = curLora();
+  if (!a) { flash('create a LoRA first'); return; }
   const path = prompt('folder to import into "' + a.name + '" (recursive):');
   if (!path) return;
   flash('importing folder…');
@@ -421,21 +422,21 @@ $('#assetfolder').addEventListener('click', async () => {
   flash(`${r.added} added, ${r.duplicates} duplicates, ${r.skipped} skipped (of ${r.total})`);
   refresh();
 });
-$('#assetnew').addEventListener('click', () => {
-  const name = prompt('new asset name (it is also the LoRA trigger — letters, digits, - _):');
+$('#loranew').addEventListener('click', () => {
+  const name = prompt('new LoRA name (it is the trigger word — letters, digits, - _):');
   if (!name) return;
-  api('asset', {op: 'create', name: name.trim()}).then(r => {
+  api('lora', {op: 'create', name: name.trim()}).then(r => {
     if (r.error) { flash(r.error); return; }
-    curAsset = name.trim();
-    localStorage.setItem('asset:last', curAsset);
+    curLoraName = name.trim();
+    localStorage.setItem('lora:last', curLoraName);
     refresh();
   });
 });
-$('#assetdel').addEventListener('click', () => {
-  const a = curAssetObj();
+$('#loradel').addEventListener('click', () => {
+  const a = curLora();
   if (!a) return;
-  if (!confirm(`delete asset "${a.name}"? Images are untouched; only the grouping goes.`)) return;
-  act('asset', {op: 'delete', name: a.name});
+  if (!confirm(`forget LoRA "${a.name}"? Its files stay on disk; images and their words are untouched.`)) return;
+  act('lora', {op: 'delete', name: a.name});
 });
 async function walkEntry(en) {
   // recursive directory walk of a dropped Explorer folder. Entries must be
@@ -455,14 +456,14 @@ async function walkEntry(en) {
   }
   return [];
 }
-async function assetAddId(a, id) {
-  // put the asset's dataset word on the image (its description was seeded
+async function loraAddId(a, id) {
+  // put the LoRA's dataset word on the image (its description was seeded
   // from the recipe prompt at birth/import; edit it on the tile)
   await api('tag', {ids: [id], add: [dsTag(a)]});
 }
-async function assetDrop(dt) {
-  const a = curAssetObj();
-  if (!a) { flash('create an asset first'); return; }
+async function loraDrop(dt) {
+  const a = curLora();
+  if (!a) { flash('create a LoRA first'); return; }
   const entries = [...(dt.items || [])]
     .map(it => it.webkitGetAsEntry && it.webkitGetAsEntry())
     .filter(Boolean);
@@ -474,7 +475,7 @@ async function assetDrop(dt) {
     for (const f of files) {
       const r = await fetch('/api/import', {method: 'POST', body: f}).then(x => x.json());
       if (r.error) continue;
-      await assetAddId(a, r.id);
+      await loraAddId(a, r.id);
       added++;
     }
     flash(`${added} of ${files.length} images added from folder`);
@@ -482,17 +483,17 @@ async function assetDrop(dt) {
     return;
   }
   const own = dt.getData('application/x-evolver');
-  if (own) { await assetAddId(a, +own); refresh(); return; }
+  if (own) { await loraAddId(a, +own); refresh(); return; }
   const uri = (dt.getData('text/uri-list') || '').split(String.fromCharCode(10)).map(x => x.trim()).find(x => x && !x.startsWith('#'));
   if (uri && uri.startsWith(location.origin + '/img/')) {
-    await assetAddId(a, +uri.split('/').pop());
+    await loraAddId(a, +uri.split('/').pop());
     refresh(); return;
   }
   const files = [...(dt.files || [])].filter(f => f.type.startsWith('image/'));
   for (const f of files) {   // external file: import, then the word
     const r = await fetch('/api/import', {method: 'POST', body: f}).then(x => x.json());
     if (r.error) { flash(r.error); continue; }
-    await assetAddId(a, r.id);
+    await loraAddId(a, r.id);
   }
   if (files.length) refresh();
   else if (!own && !uri) flash('drop an image (or drag one from any strip)');
@@ -509,10 +510,10 @@ function pruneText(p) {
       p.keep.map(k => `   #${k.id} — ${k.why}`).join(String.fromCharCode(10));
   }
   if (p.unpin.length) t += String.fromCharCode(10) + `Unpin: ${p.unpin.map(i => '#' + i).join(', ')}.`;
-  if (p.asset_removals.length) {
+  if (p.dataset_removals.length) {
     const by = {};
-    p.asset_removals.forEach(r => { by[r.asset] = (by[r.asset] || 0) + 1; });
-    t += String.fromCharCode(10) + 'Remove from assets: ' +
+    p.dataset_removals.forEach(r => { by[r.lora] = (by[r.lora] || 0) + 1; });
+    t += String.fromCharCode(10) + 'Leaves LoRA datasets: ' +
       Object.entries(by).map(([a, c]) => `${a} ×${c}`).join(', ') + '.';
   }
   const live = [];
@@ -940,7 +941,7 @@ function activeFamily() {
 // active family's (S.loras is {family: [entries]})
 function fillLoras(want) {
   const lsel = $('#lora');
-  const opts = (S.loras && S.loras[activeFamily()]) || [];
+  const opts = (S.lora_menu && S.lora_menu[activeFamily()]) || [];
   const cur = want !== undefined ? want : lsel.value;
   lsel.innerHTML = '<option value="">(none)</option>' + opts.map(l => `<option>${l}</option>`).join('');
   lsel.value = opts.includes(cur) ? cur : '';
@@ -1092,8 +1093,8 @@ document.addEventListener('keydown', async e => {
       } else openPrune(id, plan);
       return;
     }
-    if (Sel.target === 'asset') {   // remove the dataset WORD; the image is untouched
-      const a = curAssetObj();
+    if (Sel.target === 'lora') {    // remove the dataset WORD; the image is untouched
+      const a = curLora();
       if (a && id != null) { e.preventDefault(); act('tag', {ids: [id], remove: [dsTag(a)]}); }
       return;
     }
@@ -1262,13 +1263,13 @@ document.addEventListener('paste', async e => {
   if (typing(e) && e.target.id !== 'prompt') return;
   const items = [...(e.clipboardData?.items || [])];
   const img = items.find(it => it.type.startsWith('image/'));
-  if (img && (Sel.target === 'agrid' || Sel.target === 'asset')) {
+  if (img && (Sel.target === 'lgrid' || Sel.target === 'lora')) {
     e.preventDefault();
-    const a = curAssetObj();
-    if (!a) { flash('create an asset first'); return; }
+    const a = curLora();
+    if (!a) { flash('create a LoRA first'); return; }
     const r = await fetch('/api/import', {method: 'POST', body: img.getAsFile()}).then(x => x.json());
     if (r.error) { flash(r.error); return; }
-    await assetAddId(a, r.id);
+    await loraAddId(a, r.id);
     flash(`pasted into "${a.name}"`);
     refresh();
     return;
@@ -1322,7 +1323,7 @@ document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.que
 document.addEventListener('drop', async e => {
   e.preventDefault();
   document.querySelectorAll('.drop.over').forEach(x => x.classList.remove('over'));
-  if (e.target.closest('#assets')) { await assetDrop(e.dataTransfer); return; }
+  if (e.target.closest('#loras')) { await loraDrop(e.dataTransfer); return; }
   let d = e.target.closest('.drop'); if (!d) return;
   if (d.dataset.target === 'pin' && +d.dataset.index < 900) d = d.closest('#car-pin');
   const target = {target: d.dataset.target, index: +(d.dataset.index || 0)};

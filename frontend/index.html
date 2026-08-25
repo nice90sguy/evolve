@@ -5,7 +5,7 @@
 </head><body>
 <div id="app">
 <nav>
-  <a id="nav-evolver" class="on">Evolver</a><a id="nav-assets">Assets</a>
+  <a id="nav-evolver" class="on">Evolver</a><a id="nav-loras">LoRAs</a>
   <div class="spacer"></div>
   <span id="rootname" class="hint" title="the store root"></span>
 </nav>
@@ -111,12 +111,12 @@
         <div class="grid" id="sheet"></div>
       </div>
     </div>
-  <div id="assets" hidden>
+  <div id="loras" hidden>
     <div class="ahead">
-      <select id="assetsel" title="an asset = a name (the LoRA trigger) + its trained LoRAs; its dataset is every unarchived image carrying the word lora_dataset_&lt;name&gt;"></select>
-      <button id="assetnew" title="create a new asset (its name is also the LoRA trigger)">+ new</button>
-      <button id="assetdel" title="delete this asset — the images and their words are untouched">delete</button>
-      <button id="assetfolder" title="import every image in a disk folder (recursive, server-side) with this asset's dataset word">add folder…</button>
+      <select id="lorasel" title="a LoRA = a name (the trigger word) + its trained files per model; its dataset is every unarchived image carrying the word lora_dataset_&lt;name&gt;"></select>
+      <button id="loranew" title="create a new LoRA (its name is the trigger word)">+ new</button>
+      <button id="loradel" title="forget this LoRA (its files stay on disk; images and their words are untouched)">delete</button>
+      <button id="lorafolder" title="import every image in a disk folder (recursive, server-side) with this LoRA's dataset word">add folder…</button>
       <span class="hint">drag any image in to add the dataset word · Del removes it · the description is a plain description of the image; the trigger is prefixed at training time</span>
       <span style="flex:1"></span>
       <select id="trainfam" title="training family"><option value="zimage">Z-Image</option><option value="klein">Flux Klein (experimental)</option></select>
@@ -124,7 +124,7 @@
       <button id="trainstop" hidden>Stop training</button>
       <span id="trainstat"></span>
     </div>
-    <div id="agrid" class="drop" data-target="agrid" data-index="0" tabindex="0" title="click to focus, then Ctrl-V pastes a clipboard image straight into this dataset"></div>
+    <div id="lgrid" class="drop" data-target="lgrid" data-index="0" tabindex="0" title="click to focus, then Ctrl-V pastes a clipboard image straight into this dataset"></div>
   </div>
   </div>
   <div id="bottom">

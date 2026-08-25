@@ -11,8 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
-import asset
 import lineage
+import lora
 import project
 import trash
 from controls import restore_from_image
@@ -123,7 +123,7 @@ def test_siblings_and_restore():
         shutil.rmtree(rt, ignore_errors=True)
 
 
-def test_import_and_assets():
+def test_import_and_loras():
     rt = fresh_root()
     try:
         project.save_settings(default_tags=["imp"])
@@ -142,14 +142,14 @@ def test_import_and_assets():
             assert im.getpixel((0, 0)) == (255, 255, 255) and "prompt" in im.info
             assert json.loads(im.info["evolve"])["id"] == i
         assert st.images[i]["recipe"]["prompt"] == "hello" and st.images[i]["description"] == "hello"
-        asset.save_assets([asset.Asset(name="julie")])
-        assert asset.dataset_ids(st, "julie") == [i]
-        assert asset.caption("julie", "hello") == ("julie, hello", None)
-        assert asset.caption("julie", "julie x")[1] is not None          # double prefix warning
-        assert asset.caption("julie", "") == ("julie", None)
+        lora.save_loras([lora.LoRA(name="julie")])
+        assert lora.dataset_ids(st, "julie") == [i]
+        assert lora.caption("julie", "hello") == ("julie, hello", None)
+        assert lora.caption("julie", "julie x")[1] is not None          # double prefix warning
+        assert lora.caption("julie", "") == ("julie", None)
         st.tag([i], add=[ARCHIVED])
-        assert asset.dataset_ids(st, "julie") == []                      # archived leaves datasets
-        print("import/assets ok")
+        assert lora.dataset_ids(st, "julie") == []                      # archived leaves datasets
+        print("import/loras ok")
     finally:
         shutil.rmtree(rt, ignore_errors=True)
 
@@ -158,5 +158,5 @@ if __name__ == "__main__":
     test_tags_and_cascade()
     test_trash_ops()
     test_siblings_and_restore()
-    test_import_and_assets()
+    test_import_and_loras()
     print("ALL OK")

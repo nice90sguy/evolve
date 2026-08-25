@@ -4,7 +4,7 @@
     <root>/journal.jsonl        append-only: image / tag / describe / hist / purge
     <root>/state.json           the live UI state
     <root>/config.json          app settings (default_tags, ...)
-    <root>/loras.json           [{name, loras: [{path, family}]}]  (see asset.py)
+    <root>/loras.json           [{name, files: [{path, family}]}]  (see lora.py)
     <root>/loras/<name>/        trained LoRAs
     <root>/_train/<name>/       transient datasets
     <root>/_debug/              last_payload.json
@@ -55,7 +55,7 @@ def write_json(path, data, indent=1):
 # ---------- names ----------
 
 def is_valid_name(name):
-    """Asset names: letters, digits, - _, no spaces (also the LoRA trigger)."""
+    """LoRA names (= trigger words): letters, digits, - _, no spaces."""
     return bool(name) and bool(NAME_RE.fullmatch(name))
 
 

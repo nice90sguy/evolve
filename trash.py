@@ -47,14 +47,14 @@ def prune_plan(store, root_id, force=False):
     already = [i for i in branch if store.is_archived(i)]
     archive = [i for i in branch if i not in already and (force or i not in pinned)]
     keep = [{"id": i, "why": "pinned"} for i in pinned if not force]
-    datasets = [{"asset": w[len("lora_dataset_"):], "path": f"#{i}"}
+    datasets = [{"lora": w[len("lora_dataset_"):], "id": i}
                 for i in archive for w in store.tags(i) if w.startswith("lora_dataset_")]
     s = store.state
     c = s["controls"]
     return {"root": root_id, "branch": len(branch), "archive": archive,
             "already": len(already), "keep": keep,
             "unpin": [i for i in archive if i in pinned],
-            "asset_removals": datasets,
+            "dataset_removals": datasets,
             "live": {"working": s["working"] in archive,
                      "ref0": c.get("ref0") in archive,
                      "refs": sum(1 for r in c["refs"] if r in archive)},

@@ -12,7 +12,7 @@ class Jobs:
     def __init__(self):
         self.busy = None          # {"total": n, "done": k, "tab": t} while generating
         self.abort = False        # set by /api/abort; checked between candidates
-        self.train = None         # {"asset","family","running","error","log","started"}
+        self.train = None         # {"name","family","running","error","log","started"}
 
     # ---------- generator rounds ----------
 
@@ -67,13 +67,13 @@ class Jobs:
         t = self.train
         if not t:
             return None
-        return {k: t[k] for k in ("asset", "family", "running", "error", "log")} | \
+        return {k: t[k] for k in ("name", "family", "running", "error", "log")} | \
             {"elapsed": int(time.time() - t["started"])}
 
-    def start_training(self, asset_name, family, log_path, fn):
+    def start_training(self, name, family, log_path, fn):
         """fn() does the work in a daemon thread; its exception (if any)
         becomes the visible error."""
-        self.train = {"asset": asset_name, "family": family, "running": True,
+        self.train = {"name": name, "family": family, "running": True,
                       "error": None, "started": time.time(), "log": str(log_path)}
 
         def work():

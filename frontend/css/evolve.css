@@ -133,12 +133,12 @@ main{display:grid;grid-template-rows:auto 1fr auto;height:100vh;min-width:0}
 .iconb:hover{color:var(--fg)}
 .car summary .sz svg{vertical-align:middle}
 /* ---- asset browser (v4): swaps in for the Generate panel region ---- */
-#assets{grid-column:3;grid-row:1;display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--bg)}
-#assets[hidden]{display:none}
-#assets .ahead{display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line);font-size:12px;color:var(--dim);flex-wrap:wrap}
-#assets .ahead select{background:#111;color:var(--fg);border:1px solid var(--line);padding:3px;min-width:120px}
-#assets .ahead button{background:#333;color:var(--fg);border:1px solid var(--line);cursor:pointer;padding:3px 10px}
-#agrid{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,150px);gap:12px;padding:12px;align-content:start;justify-content:start}
+#loras{grid-column:3;grid-row:1;display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--bg)}
+#loras[hidden]{display:none}
+#loras .ahead{display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line);font-size:12px;color:var(--dim);flex-wrap:wrap}
+#loras .ahead select{background:#111;color:var(--fg);border:1px solid var(--line);padding:3px;min-width:120px}
+#loras .ahead button{background:#333;color:var(--fg);border:1px solid var(--line);cursor:pointer;padding:3px 10px}
+#lgrid{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,150px);gap:12px;padding:12px;align-content:start;justify-content:start}
 .atile{width:150px;display:flex;flex-direction:column;gap:4px;position:relative}
 .atile img{width:150px;height:150px;object-fit:cover;border:2px solid var(--line);border-radius:4px;cursor:pointer}
 .atile .gonebox{width:150px;height:150px;display:flex;align-items:center;justify-content:center;border:2px dashed var(--line);border-radius:4px;color:var(--dim);font-size:10px;text-align:center;white-space:pre-line}

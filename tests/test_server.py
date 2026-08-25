@@ -68,7 +68,8 @@ def main():
         snap = state()
         assert snap["all_ids"] == [A, X, k] and snap["words"] == {"softlock": 3}
         assert snap["settings"]["default_tags"] == ["softlock"] and snap["tags"][str(k)] == ["softlock"]
-        assert sorted(snap["loras"]) == ["illustrious", "klein", "zimage"] and snap["families"]["klein"]["lora"] is True
+        assert sorted(snap["lora_menu"]) == ["illustrious", "klein", "zimage"] and snap["families"]["klein"]["lora"] is True
+        assert snap["loras"] == []
         s, r = post("/api/settings", {"default_tags": ["softlock", " julie ", "bad word", ""]})
         assert r["default_tags"] == ["softlock", "julie"], r
         s, r = post("/api/tag", {"id": X, "add": ["freddy"], "cascade": True})
@@ -98,9 +99,9 @@ def main():
             assert e.code == 404
         s, r = post("/api/discard", {"id": A})
         assert s == 200 and "archived" in state()["tags"][str(A)]
-        s, r = post("/api/asset", {"op": "create", "name": "julie"})
-        assert s == 200 and r["assets"] == [{"name": "julie", "loras": []}]
-        s, r = post("/api/asset", {"op": "create", "name": "bad name"})
+        s, r = post("/api/lora", {"op": "create", "name": "julie"})
+        assert s == 200 and r["loras"] == [{"name": "julie", "files": []}]
+        s, r = post("/api/lora", {"op": "create", "name": "bad name"})
         assert s == 400
         s, r = post("/api/train", {"name": "julie", "family": "zimage"})
         assert s == 400 and "empty dataset" in r["error"], r
@@ -111,13 +112,13 @@ def main():
         assert s == 400 and "family" in r["error"], r
         s, r = post("/api/generate", {"op": "create", "family": "zimage", "lora_strength": 99})
         assert s == 400 and "lora_strength" in r["error"], r
-        s, r = post("/api/asset", {"op": "add_lora", "name": "julie", "path": "loras/julie/x.safetensors"})
-        assert s == 400 and "loras/<asset>/<family>/" in r["error"], r
+        s, r = post("/api/lora", {"op": "add_file", "name": "julie", "path": "loras/julie/x.safetensors"})
+        assert s == 400 and "loras/<name>/<family>/" in r["error"], r
         (rt / "loras" / "julie" / "klein").mkdir(parents=True)
         (rt / "loras" / "julie" / "klein" / "julie_v001_comfy.safetensors").write_bytes(b"x")
-        s, r = post("/api/asset", {"op": "add_lora", "name": "julie", "path": "loras/julie/klein/julie_v001_comfy.safetensors"})
-        assert s == 200 and r["assets"][0]["loras"] == [{"path": "loras/julie/klein/julie_v001_comfy.safetensors", "family": "klein"}], r
-        assert state()["loras"]["klein"] == ["julie"] and state()["loras"]["zimage"] == []
+        s, r = post("/api/lora", {"op": "add_file", "name": "julie", "path": "loras/julie/klein/julie_v001_comfy.safetensors"})
+        assert s == 200 and r["loras"][0]["files"] == [{"path": "loras/julie/klein/julie_v001_comfy.safetensors", "family": "klein"}], r
+        assert state()["lora_menu"]["klein"] == ["julie"] and state()["lora_menu"]["zimage"] == []
         s, r = post("/api/controls", {"prompt": "saved", "bogus": 1})
         snap = state()
         assert snap["controls"]["prompt"] == "saved" and "bogus" not in snap["controls"]

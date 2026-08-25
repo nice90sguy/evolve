@@ -775,8 +775,16 @@ Klein-only, refs need a references-family, a LoRA needs a lora-family),
 refused before anything runs; NB pydantic `pattern` is a search, use a
 validator for full-match), `asset.Asset`/`LoraEntry`. **A LoRA is specific
 to its model**: files live at `<root>/loras/<asset>/<family>/*.safetensors`,
-`loras.json` (renamed from assets.json 2026-08-25) = `[{name, loras:
+`loras.json` (renamed from assets.json 2026-08-25) = `[{name, files:
 [{path, family}]}]` (family recorded AND must agree with the directory).
+**"Asset" is RETIRED (user, 2026-08-25): the thing is a LoRA** - a name
+(= trigger word) + trained files per family; its dataset is the word
+`lora_dataset_<name>`; the "LoRA editor" (nav: LoRAs) is images grouped
+by that word with editable descriptions, remove-the-word, and Make LoRA.
+`asset.py` is folded into `lora.py` (`LoRA`, `LoraFile`, `load_loras`,
+`menu()`, `resolve()`, `dataset_ids`, `caption`); API `/api/lora`
+(create/delete/add_file); snapshot keys `loras` (the list) and
+`lora_menu` (the per-family dropdown).
 THE DROPDOWN OFFERS EXACTLY ONE CHOICE PER ASSET PER FAMILY: the asset
 NAME, resolving to the newest LoRA recorded for that family - never raw
 files, never older versions, never musubi-native files (user rule: "never

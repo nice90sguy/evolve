@@ -31,7 +31,7 @@ import _cli  # noqa: F401
 from PIL import Image
 
 import project
-from asset import family_of_lora_path
+from lora import family_of_path
 from image_file import IMAGE_EXTS, flattened_rgb, sha1_of, text_chunks
 from image_meta import glean_recipe
 from image_utils import has_alpha
@@ -183,7 +183,7 @@ def migrate(root):
     # assets: datasets -> words + descriptions; loras kept
     new_assets = []
     for a in old_assets:
-        new_assets.append({"name": a["name"], "loras": list(a.get("loras") or [])})
+        new_assets.append({"name": a["name"], "files": list(a.get("loras") or [])})
         for e in a.get("dataset") or []:
             parts = str(e.get("path", "")).split("/")
             if len(parts) == 3 and parts[1] == "images" and parts[2].endswith(".png"):
@@ -248,7 +248,7 @@ def migrate_loras(root):
     out = []
     for a in raw:
         entries = []
-        for e in a.get("loras") or []:
+        for e in a.get("files") or a.get("loras") or []:
             if isinstance(e, dict):
                 entries.append(e)
                 continue
@@ -257,7 +257,7 @@ def migrate_loras(root):
                 path, fam = moved[rel]
             else:
                 path = rel
-                famv = family_of_lora_path(rel)
+                famv = family_of_path(rel)
                 if famv is None:
                     q = root / rel
                     famd = detect_family(q) if q.is_file() else None
@@ -268,11 +268,11 @@ def migrate_loras(root):
                 else:
                     fam = famv.value
             entries.append({"path": path, "family": fam})
-        out.append({"name": a["name"], "loras": entries})
+        out.append({"name": a["name"], "files": entries})
     project.write_json(root / "loras.json", out)
     if src.name == "assets.json":
         src.unlink(missing_ok=True)
-    report.append(f"loras.json: {len(out)} asset(s), per-family LoRA entries")
+    report.append(f"loras.json: {len(out)} LoRA(s), per-family file entries")
     return report
 
 

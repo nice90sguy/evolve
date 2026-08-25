@@ -17,7 +17,7 @@ python evolve.py --root D:/evolve_root [--port 8189] [--embed-workflow]
 `--root` is mandatory and is the ONLY location the app depends on (nothing is
 cwd-relative). Under it: `images/NNN.png` (every image, ids global),
 `journal.jsonl`, `state.json`, `config.json` (settings: `default_tags`),
-`loras.json` (`[{name, loras: [{path, family}]}]`), `loras/<name>/<family>/`, `_train/`, `_debug/`.
+`loras.json` (`[{name, files: [{path, family}]}]`), `loras/<name>/<family>/`, `_train/`, `_debug/`.
 
 **Tags.** Images are grouped, filtered and given meaning by words the user
 puts on them (`julie`, `possible`, `lora_dataset_julie`, `pinned`,
@@ -26,9 +26,10 @@ puts on them (`julie`, `possible`, `lora_dataset_julie`, `pinned`,
 cascade down its mother-line descendants (ADD skips archived ones, REMOVE
 does not). Every word is a view. `archived` is a word, not a directory:
 files never move; *Purge archived* deletes the files of archived images
-that no unarchived image descends from. An asset's training dataset is the
-word `lora_dataset_<name>`; the caption is the image's own description with
-the trigger prefixed at sync time. Old project-subdir roots are converted
+that no unarchived image descends from. A LoRA is a name (the trigger word) + trained
+files per model family; its training dataset is the word `lora_dataset_<name>`
+(the LoRAs page is just that view, with descriptions); the caption is the
+image's own description with the trigger prefixed at sync time. Old project-subdir roots are converted
 by `tools/migrate_projects.py --root …` (also `--scan DIR --tag w` to absorb
 alien images).
 
@@ -50,7 +51,7 @@ Runtime (what `evolve.py` needs), dependency order bottom-up:
 | `store.py` | `Store`: images + journal + live state, tags (birth copy, cascade), descriptions, garbage/purge |
 | `trash.py` | discard, sweep, prune, purge — in tag vocabulary |
 | `model_family.py` | `ModelFamily` enum + per-family capabilities — the one definition every config, dropdown and trainer validates against |
-| `asset.py`, `lora.py`, `lineage.py` | assets `{name, loras: [{path, family}]}` + dataset word/captions; per-family LoRA dropdown (`loras/<asset>/<family>/`); siblings/family |
+| `lora.py`, `lineage.py` | LoRAs `{name, files: [{path, family}]}`, dataset word + captions, the per-family dropdown (one choice per LoRA); siblings/family |
 | `generate.py`, `camera.py`, `training.py` | the operators: `do_generate(GenerateConfig)`, `do_camera(CameraConfig)`, `do_training(TrainConfig)` |
 | `lora_train/` | `Trainer` interface (`common.py`) + `zimage_turbo`, `flux_klein_9b`, `illustrious` (not available yet) |
 | `jobs.py` | one-GPU job runner: busy flag, abort, training status |

@@ -6,8 +6,8 @@ app generates with and trains LoRAs for, and what each one can do.
     ModelFamily.ILLUSTRIOUS Illustrious SDXL  fiat only, no LoRAs yet, not trainable
 
 A LoRA is specific to its family: files live at
-<root>/loras/<asset>/<family>/*.safetensors and every dropdown, recipe,
-trainer and asset entry carries the family explicitly (never inferred from
+<root>/loras/<name>/<family>/*.safetensors and every dropdown, recipe,
+trainer and loras.json entry carries the family explicitly (never inferred from
 a filename at use time). parse_model_family() is the one validator everything
 (pydantic models, controls, the HTTP layer) goes through.
 """

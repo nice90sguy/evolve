@@ -2,7 +2,7 @@
 
 Handlers validate + translate; the work is done by the operators
 (generate.do_generate, camera.do_camera, training.do_training) and the
-data layer (store, trash, asset, lineage). One App context per process:
+data layer (store, trash, lora, lineage). One App context per process:
 the store, the job runner, the settings.
 
     GET  /                  frontend/index.html (live from disk, no-store)
@@ -20,7 +20,6 @@ from pathlib import Path
 from aiohttp import web
 from pydantic import ValidationError
 
-import asset as asset_mod
 import camera
 import comfy_client
 import lineage
@@ -30,7 +29,7 @@ from model_family import model_families_for_ui
 from generate import GenerateConfig, do_generate
 from image_file import list_images
 from jobs import Jobs
-from lora import list_loras
+import lora as lora_mod
 from project import clean_tags, load_settings, save_settings
 from training import (TrainConfig, abort_training, do_training, log_path,
                       sync_dataset)
@@ -49,7 +48,7 @@ class App:
     def snapshot(self):
         snap = self.store.snapshot()
         snap.update({
-            "assets": [a.model_dump(mode="json") for a in asset_mod.load_assets()],
+            "loras": [x.model_dump(mode="json") for x in lora_mod.load_loras()],
             "settings": load_settings(),
             "train": self.jobs.train_status(),
             "comfy_ok": comfy_client.is_alive(busy=bool(self.jobs.busy)),
@@ -57,7 +56,7 @@ class App:
             "families": model_families_for_ui(),
             "pov_azim": camera.AXIS_AZIMUTH, "pov_elev": camera.AXIS_ELEVATION,
             "pov_dist": camera.AXIS_DISTANCE,
-            "loras": list_loras()})
+            "lora_menu": lora_mod.menu()})
         return snap
 
 
@@ -365,7 +364,7 @@ async def handle_import_url(request):
 
 async def handle_import_folder(request):
     """Bulk-import every image in a DISK folder (recursive), optionally
-    putting words on each (e.g. an asset's dataset word)."""
+    putting words on each (e.g. a LoRA's dataset word)."""
     store = ctx(request).store
     b = await request.json()
     folder = Path(str(b.get("path") or "").strip().strip('"')).expanduser()
@@ -391,21 +390,21 @@ async def handle_import_folder(request):
     return ok(**r)
 
 
-# ---------- assets & training ----------
+# ---------- LoRAs & training ----------
 
-async def handle_asset(request):
-    """create / delete / add_lora. Dataset membership = the word
-    lora_dataset_<name> (use /api/tag); captions = /api/describe."""
+async def handle_lora(request):
+    """create / delete / add_file on loras.json. Dataset membership = the
+    word lora_dataset_<name> (use /api/tag); captions = /api/describe."""
     store = ctx(request).store
     b = await request.json()
     with store.lock:
-        assets = asset_mod.load_assets()
-        why = asset_mod.apply_op(assets, b.get("op"), (b.get("name") or "").strip(),
-                                 b.get("path"), b.get("family"))
+        loras = lora_mod.load_loras()
+        why = lora_mod.apply_op(loras, b.get("op"), (b.get("name") or "").strip(),
+                                b.get("path"), b.get("family"))
         if why:
-            return error(why, 404 if why.startswith("no asset") else 400)
-        asset_mod.save_assets(assets)
-    return ok(assets=[a.model_dump(mode="json") for a in assets])
+            return error(why, 404 if why.startswith("no LoRA") else 400)
+        lora_mod.save_loras(loras)
+    return ok(loras=[x.model_dump(mode="json") for x in loras])
 
 
 async def handle_train(request):
@@ -413,15 +412,15 @@ async def handle_train(request):
     b = await request.json()
     name = (b.get("name") or "").strip()
     try:
-        cfg = TrainConfig(asset=name, family=b.get("family") or "zimage", steps=b.get("steps"))
+        cfg = TrainConfig(name=name, family=b.get("family") or "zimage", steps=b.get("steps"))
     except ValidationError as e:
         return invalid(e)
     if app.jobs.busy:
         return error("generating - wait or Stop first", 409)
     if app.jobs.training_running():
         return error("a training job is already running", 409)
-    if asset_mod.find_asset(asset_mod.load_assets(), name) is None:
-        return error(f"no asset {name!r}", 404)
+    if lora_mod.find_lora(lora_mod.load_loras(), name) is None:
+        return error(f"no LoRA {name!r}", 404)
     try:
         sync_dataset(app.store, name)
     except ValueError as e:
@@ -448,7 +447,7 @@ ROUTES = {
     "prune": handle_prune, "gc": handle_gc,
     "import": handle_import, "import_url": handle_import_url,
     "import_folder": handle_import_folder,
-    "asset": handle_asset, "train": handle_train, "train_abort": handle_train_abort,
+    "lora": handle_lora, "train": handle_train, "train_abort": handle_train_abort,
 }
 
 

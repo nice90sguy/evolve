@@ -1,4 +1,4 @@
-"""training.py - Make LoRA: sync the asset's dataset -> train -> record.
+"""training.py - Make LoRA: sync the LoRA's dataset -> train -> record.
 
     sync:   images carrying `lora_dataset_<name>` (unarchived) ->
             <root>/_train/<name>/<id>.png + <id>.txt (caption = trigger
@@ -6,7 +6,7 @@
             copy-new / delete-dropped / skip-unchanged.
     train:  lora_train.get_trainer(family).train(...) ->
             <root>/loras/<name>/<family>/   (a LoRA is specific to its model)
-    record: the _comfy file is appended to the asset's loras[] WITH its family.
+    record: the _comfy file is recorded on the LoRA WITH its family.
 
 TrainConfig is a validated pydantic model: an unknown or untrainable family
 is refused before anything runs. The user's click IS the say-so (red line
@@ -19,7 +19,7 @@ from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 
 import lora_train
-from asset import append_lora, caption, dataset_ids, lora_dir
+from lora import caption, dataset_ids, lora_dir, record_file
 from comfy_client import free_vram_quietly
 from model_family import ModelFamily, family_info
 from lora_train import common
@@ -28,15 +28,15 @@ from project import is_valid_name, root
 
 
 class TrainConfig(BaseModel):
-    asset: str
+    name: str                       # the LoRA (= trigger word)
     family: ModelFamily = ModelFamily.ZIMAGE
     steps: Optional[int] = Field(None, gt=0, le=100_000)   # None = the trainer's default
 
-    @field_validator("asset")
+    @field_validator("name")
     @classmethod
     def _valid_name(cls, v):
         if not is_valid_name(v):          # pydantic `pattern` is a search, not a full match
-            raise ValueError(f"bad asset name {v!r}")
+            raise ValueError(f"bad LoRA name {v!r}")
         return v
 
     @field_validator("family")
@@ -90,18 +90,18 @@ def do_training(cfg):
     ok, why = trainer.available()
     if not ok:
         raise common.TrainError(why)
-    ds = train_dir(cfg.asset)
-    out = lora_dir(cfg.asset, cfg.family)
-    lp = log_path(cfg.asset)
+    ds = train_dir(cfg.name)
+    out = lora_dir(cfg.name, cfg.family)
+    lp = log_path(cfg.name)
     print(f"raw log: tail -f {unix_path(lp)}")
     free_vram_quietly()
     with lp.open("w", encoding="utf-8", errors="replace") as log:
-        native = trainer.train(ds, cfg.asset, cfg.steps or trainer.defaults["steps"],
+        native = trainer.train(ds, cfg.name, cfg.steps or trainer.defaults["steps"],
                                out, log)
         comfy = trainer.to_comfy(native, log)
     rel = comfy.relative_to(root()).as_posix()
-    append_lora(cfg.asset, rel, cfg.family)
-    print(f"training done: {comfy.name} -> asset {cfg.asset} [{cfg.family}]")
+    record_file(cfg.name, rel, cfg.family)
+    print(f"training done: {comfy.name} -> LoRA {cfg.name} [{cfg.family}]")
     return rel
 
 

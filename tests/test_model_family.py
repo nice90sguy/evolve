@@ -1,6 +1,6 @@
 """Model family as a shared, validated constraint: ModelFamily, the pydantic
-configs (Generate/Camera/Train), per-family asset LoRA entries, dropdown
-resolution and detect_family. Run: python tests/test_model_family.py"""
+configs (Generate/Camera/Train), per-family LoRA files, the dropdown and
+detect_family. Run: python tests/test_model_family.py"""
 import shutil
 import sys
 import tempfile
@@ -11,7 +11,6 @@ import numpy as np
 from pydantic import ValidationError
 from safetensors.numpy import save_file
 
-import asset
 import lora
 import project
 from camera import CameraConfig
@@ -55,15 +54,15 @@ def test_configs():
     assert "bad azimuth" in raises(CameraConfig, source_id=3, azim="sideways")
     assert "no camera axis" in raises(CameraConfig, source_id=3)
     assert raises(CameraConfig, source_id=0, elev="low")
-    t = TrainConfig(asset="julie", family="klein")
+    t = TrainConfig(name="julie", family="klein")
     assert t.family is ModelFamily.KLEIN and t.steps is None
-    assert "not trainable" in raises(TrainConfig, asset="julie", family="illustrious")
-    assert raises(TrainConfig, asset="bad name", family="zimage")
-    assert raises(TrainConfig, asset="julie", family="zimage", steps=0)
+    assert "not trainable" in raises(TrainConfig, name="julie", family="illustrious")
+    assert raises(TrainConfig, name="bad name", family="zimage")
+    assert raises(TrainConfig, name="julie", family="zimage", steps=0)
     print("configs ok")
 
 
-def test_assets_and_dropdown():
+def test_loras_and_dropdown():
     rt = Path(tempfile.mkdtemp(prefix="evolve_fam_"))
     try:
         project.set_root(rt)
@@ -75,32 +74,35 @@ def test_assets_and_dropdown():
                   "julie/zimage/julie_v001_z_comfy.safetensors", "loose/klein/other_comfy.safetensors",
                   "julie/klein/julie_v002_x_comfy.safetensors.bak"):
             (rt / "loras" / p).write_bytes(b"x")
-        a = asset.Asset(name="julie")
-        assert asset.apply_op([a], "add_lora", "julie", "loras/julie/klein/julie_v001_x_comfy.safetensors") is None
-        assert asset.apply_op([a], "add_lora", "julie", "loras/julie/klein/julie_v002_x_comfy.safetensors") is None
-        assert asset.apply_op([a], "add_lora", "julie", "loras/julie/zimage/julie_v001_z_comfy.safetensors") is None
-        bad = asset.apply_op([a], "add_lora", "julie", "loras/julie/zimage/julie_v001_z_comfy.safetensors", "klein")
+        a = lora.LoRA(name="julie")
+        assert lora.apply_op([a], "add_file", "julie", "loras/julie/klein/julie_v001_x_comfy.safetensors") is None
+        assert lora.apply_op([a], "add_file", "julie", "loras/julie/klein/julie_v002_x_comfy.safetensors") is None
+        assert lora.apply_op([a], "add_file", "julie", "loras/julie/zimage/julie_v001_z_comfy.safetensors") is None
+        bad = lora.apply_op([a], "add_file", "julie", "loras/julie/zimage/julie_v001_z_comfy.safetensors", "klein")
         assert bad and "directory says" in bad
-        bad = asset.apply_op([a], "add_lora", "julie", "loras/stray.safetensors")
-        assert bad and "loras/<asset>/<family>/" in bad
-        asset.save_assets([a])
-        assets = asset.load_assets()
-        assert [e.family for e in assets[0].loras] == [ModelFamily.KLEIN, ModelFamily.KLEIN, ModelFamily.ZIMAGE]
-        # the dropdown: ONE choice per asset per family - the alias; no files, no old versions
-        d = lora.list_loras()
+        bad = lora.apply_op([a], "add_file", "julie", "loras/stray.safetensors")
+        assert bad and "loras/<name>/<family>/" in bad
+        assert "bad LoRA name" in (lora.apply_op([], "create", "bad name") or "")
+        lora.save_loras([a])
+        loras = lora.load_loras()
+        assert [f.family for f in loras[0].files] == [ModelFamily.KLEIN, ModelFamily.KLEIN, ModelFamily.ZIMAGE]
+        # the dropdown: ONE choice per LoRA per family - the name; no files, no old versions
+        d = lora.menu()
         assert d == {"klein": ["julie"], "zimage": ["julie"], "illustrious": []}, d
-        assert lora.resolve_lora("julie", "klein").name == "julie_v002_x_comfy.safetensors"   # newest for the family
-        assert lora.resolve_lora("julie", "zimage").name == "julie_v001_z_comfy.safetensors"
-        assert lora.resolve_lora("julie", "illustrious") is None
-        assert lora.resolve_lora("loras/loose/klein/other_comfy.safetensors", "klein") is None  # never a raw file
-        assert lora.resolve_lora("nobody", "klein") is None
-        # a pre-family loras.json is refused loudly
-        project.write_json(rt / "loras.json", [{"name": "julie", "loras": ["loras/julie/x.safetensors"]}])
-        try:
-            asset.load_assets()
-            raise AssertionError("legacy entries accepted")
-        except asset.AssetsFormatError as e:
-            assert "migrate_projects.py --loras" in str(e)
+        assert lora.resolve("julie", "klein").name == "julie_v002_x_comfy.safetensors"   # newest for the family
+        assert lora.resolve("julie", "zimage").name == "julie_v001_z_comfy.safetensors"
+        assert lora.resolve("julie", "illustrious") is None
+        assert lora.resolve("loras/loose/klein/other_comfy.safetensors", "klein") is None  # never a raw file
+        assert lora.resolve("nobody", "klein") is None
+        # a pre-family / pre-rename loras.json is refused loudly
+        for legacy in ([{"name": "julie", "loras": ["loras/julie/x.safetensors"]}],
+                       [{"name": "julie", "loras": [{"path": "loras/julie/klein/julie_v001_x_comfy.safetensors", "family": "klein"}]}]):
+            project.write_json(rt / "loras.json", legacy)
+            try:
+                lora.load_loras()
+                raise AssertionError("legacy entries accepted")
+            except lora.LorasFormatError as e:
+                assert "migrate_projects.py --loras" in str(e)
         # detect_family from file metadata / keys
         f = rt / "k.safetensors"
         save_file({"lora_unet_double_blocks_0_img_attn_proj.lora_down.weight": np.zeros((2, 2), dtype=np.float32)},
@@ -111,7 +113,7 @@ def test_assets_and_dropdown():
         assert detect_family(f) is ModelFamily.ZIMAGE
         save_file({"w": np.zeros((2, 2), dtype=np.float32)}, str(f), metadata={})
         assert detect_family(f) is None
-        print("assets/dropdown ok")
+        print("loras/dropdown ok")
     finally:
         shutil.rmtree(rt, ignore_errors=True)
 
@@ -119,5 +121,5 @@ def test_assets_and_dropdown():
 if __name__ == "__main__":
     test_family_enum()
     test_configs()
-    test_assets_and_dropdown()
+    test_loras_and_dropdown()
     print("ALL OK")

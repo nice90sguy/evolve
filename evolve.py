@@ -11,7 +11,7 @@ there are no project subdirectories. ComfyUI must already be running at
 happens only on your click.
 
 Layout of this package: api.py (HTTP) -> generate/camera/training
-(operators) -> store/trash/asset/lineage/lora (data) -> build_payload +
+(operators) -> store/trash/lora/lineage (data) -> build_payload +
 templates/ (graphs) -> comfy_client / image_* / project (leaves). The UI is
 frontend/ (served live from disk). tools/ holds the standalone drivers.
 """
@@ -19,8 +19,8 @@ import argparse
 
 from aiohttp import web
 
-import asset
 import comfy_client
+import lora
 import project
 from api import create_app
 from store import Store
@@ -49,8 +49,8 @@ def main():
                          f"{root}  first (tags replaced projects, 2026-08-25)")
     store = Store(root)
     try:
-        asset.load_assets()          # fail fast on a pre-family loras.json
-    except asset.AssetsFormatError as e:
+        lora.load_loras()            # fail fast on a pre-family / pre-rename loras.json
+    except lora.LorasFormatError as e:
         raise SystemExit(str(e))
     app = create_app(store, embed_workflow=args.embed_workflow)
     print(f"root:  {root}  ({len(store.alive_ids())} images, "

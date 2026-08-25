@@ -238,8 +238,8 @@ def detect_family(path):
     """Which model a .safetensors LoRA belongs to, from its OWN metadata
     (musubi writes ss_network_module / ss_base_model_version) with a key-
     name sniff as fallback. Returns a ModelFamily or None. Used only to migrate
-    files into loras/<asset>/<family>/ - at use time the directory and the
-    asset entry are the authority."""
+    files into loras/<name>/<family>/ - at use time the directory and the
+    loras.json entry are the authority."""
     from model_family import ModelFamily
     from safetensors import safe_open
     with safe_open(str(path), "np") as f:      # metadata + key names only, no torch

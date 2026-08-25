@@ -85,7 +85,7 @@ def main():
         assert st.images[kid]["description"] == "kid"                # asset said bare trigger -> seeded prompt stays
         assert st.history == [one]
         # the synthetic LoRA path never existed on disk: dropped, reported, family entries otherwise
-        assert json.loads((rt / "loras.json").read_text()) == [{"name": "julie", "loras": []}] and not (rt / "assets.json").exists()
+        assert json.loads((rt / "loras.json").read_text()) == [{"name": "julie", "files": []}] and not (rt / "assets.json").exists()
         assert any("dropped" in line for line in report)
         assert (rt / "_migrated" / "soft" / "journal.jsonl").exists() and not (rt / "soft").exists()
         # scan the leftover jpg as an alien
