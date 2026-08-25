@@ -71,32 +71,45 @@ const icon = (d, sz) => `<svg viewBox="0 0 24 24" width="${sz || 18}" height="${
 const imgURL = id => location.origin + '/img/' + id;
 
 // ---------- views: every word is a view ----------
-// The word bar lists every word in use (+ 'all'); the view carousel shows
-// every image carrying the chosen word - archived included (v1: no implicit
-// filter anywhere, so the trash can be inspected).
+// The word bar lists every word in use (+ 'all' and 'trash'); the view
+// carousel shows every image carrying the chosen word. archived is a BIT,
+// not a word: archived images are hidden from every view unless the
+// 'show archived' toggle is on; 'trash' is the view of exactly those.
 let curWord = localStorage.getItem('view:word') || '*';
+let showArchived = localStorage.getItem('view:archived') === '1';
+const isArchived = id => archivedSet.has(id);
+let archivedSet = new Set();
 function viewIds() {
   if (!S) return [];
-  if (curWord === '*') return S.all_ids || [];
-  return (S.all_ids || []).filter(id => (S.tags[id] || []).includes(curWord));
+  if (curWord === '#trash') return S.archived || [];
+  const ids = curWord === '*' ? (S.all_ids || []) : (S.all_ids || []).filter(id => (S.tags[id] || []).includes(curWord));
+  return showArchived ? ids : ids.filter(id => !isArchived(id));
 }
 function renderWords() {
+  archivedSet = new Set(S.archived || []);
   const bar = $('#wordbar');
   const words = Object.entries(S.words || {}).sort((a, b) => a[0].localeCompare(b[0]));
-  if (curWord !== '*' && !(curWord in (S.words || {}))) curWord = '*';
+  if (curWord !== '*' && curWord !== '#trash' && !(curWord in (S.words || {}))) curWord = '*';
   bar.innerHTML = '';
-  const chip = (w, n, label) => {
+  const chip = (w, n, label, cls) => {
     const c = document.createElement('span');
-    c.className = 'chip' + (w === curWord ? ' on' : '') + (w === 'archived' ? ' arch' : '');
+    c.className = 'chip' + (w === curWord ? ' on' : '') + (cls ? ' ' + cls : '');
     c.innerHTML = `${label || w} <span class="cnt">${n}</span>`;
-    c.title = w === '*' ? 'every image' : `images carrying the word "${w}"`;
+    c.title = w === '*' ? 'every image' : w === '#trash' ? 'archived images (the trash)' : `images carrying the word "${w}"`;
     c.addEventListener('click', () => { curWord = w; localStorage.setItem('view:word', w); render(); });
     bar.appendChild(c);
   };
   chip('*', (S.all_ids || []).length, 'all');
   words.forEach(([w, n]) => chip(w, n));
-  $('#viewname').textContent = curWord === '*' ? 'All' : curWord;
-  $('#viewhint').textContent = curWord === '*' ? 'every image, by number' : `every image carrying "${curWord}", by number`;
+  chip('#trash', (S.archived || []).length, 'trash', 'arch');
+  const tg = document.createElement('label');
+  tg.className = 'chip tog' + (showArchived ? ' on' : '');
+  tg.title = 'show archived images inside the other views (they stay hidden otherwise)';
+  tg.innerHTML = `<input type="checkbox" ${showArchived ? 'checked' : ''}> show archived`;
+  tg.querySelector('input').addEventListener('change', e => { showArchived = e.target.checked; localStorage.setItem('view:archived', showArchived ? '1' : '0'); render(); });
+  bar.appendChild(tg);
+  $('#viewname').textContent = curWord === '*' ? 'All' : curWord === '#trash' ? 'Trash' : curWord;
+  $('#viewhint').textContent = curWord === '*' ? 'every image, by number' : curWord === '#trash' ? 'archived images — purge removes those nothing live descends from' : `every image carrying "${curWord}", by number`;
 }
 
 // ---------- named strips: ONE carousel that works anywhere ----------
@@ -335,7 +348,7 @@ const dsTag = a => 'lora_dataset_' + a.name;
 // the dataset = every unarchived image carrying the LoRA's word
 function datasetIds(a) {
   const w = dsTag(a);
-  return (S.all_ids || []).filter(id => { const t = S.tags[id] || []; return t.includes(w) && !t.includes('archived'); });
+  return (S.all_ids || []).filter(id => (S.tags[id] || []).includes(w) && !isArchived(id));
 }
 function renderLoras() {
   if (mode !== 'loras' || !S) return;
@@ -1163,7 +1176,6 @@ async function showInfo(id, x, y) {
   const rows = [['file', path],
     ['size', (m.w && m.h) ? m.w + ' × ' + m.h : null, true],   // true = no copy button
     ['created', m.ts],
-    ['gc', m.gc, true],
     ['refs', (m.parents || []).map(q => dir + q + '.png').join(String.fromCharCode(10)) || null],
     ['prompt', m.recipe && m.recipe.prompt]];
   for (const [k, v, nocopy] of rows) {
@@ -1182,6 +1194,7 @@ async function showInfo(id, x, y) {
     infoEl.appendChild(row);
   }
   infoEl.appendChild(tagEditor(m));
+  infoEl.appendChild(archivedEditor(m));
   infoEl.appendChild(descEditor(m));
   infoEl.hidden = false;
   const r = infoEl.getBoundingClientRect();
@@ -1189,9 +1202,9 @@ async function showInfo(id, x, y) {
   infoEl.style.top = Math.min(y, innerHeight - r.height - 12) + 'px';
 }
 // ---- tag editor (in the Info Window): words, add/remove, cascade ----
-// No word is protected: archived and pinned edit like any other. "apply to
-// descendants" (default on) cascades along parent-0 edges; ADD skips
-// archived descendants, REMOVE does not (server rule).
+// No word is protected. "apply to descendants" (default on) cascades along
+// parent-0 edges; ADD skips archived descendants, REMOVE does not (server
+// rule). archived is a bit with its own checkbox, not a word.
 let cascadeOn = localStorage.getItem('tag:cascade') !== '0';
 function tagEditor(m) {
   const row = document.createElement('div'); row.className = 'iw-row';
@@ -1205,7 +1218,7 @@ function tagEditor(m) {
     })
     .then(() => showInfo(m.id, infoX, infoY));
   (m.tags || []).forEach(w => {
-    const c = document.createElement('span'); c.className = 'chip' + (w === 'archived' ? ' arch' : '');
+    const c = document.createElement('span'); c.className = 'chip';
     c.innerHTML = `${w}<span class="x" title="remove this word">×</span>`;
     c.querySelector('.x').addEventListener('click', () => apply([], [w]));
     box.appendChild(c);
@@ -1223,6 +1236,23 @@ function tagEditor(m) {
   casc.querySelector('input').addEventListener('change', e => { cascadeOn = e.target.checked; localStorage.setItem('tag:cascade', cascadeOn ? '1' : '0'); });
   box.append(inp, casc);
   row.append(kk, box);
+  return row;
+}
+function archivedEditor(m) {
+  const row = document.createElement('div'); row.className = 'iw-row';
+  const kk = document.createElement('span'); kk.className = 'iw-k'; kk.textContent = 'state';
+  const lab = document.createElement('label'); lab.className = 'iw-casc';
+  const pinned = (m.tags || []).includes('pinned');
+  lab.innerHTML = `<input type="checkbox" ${m.archived ? 'checked' : ''}> archived` +
+    (pinned && !m.archived ? ' <span class="hint">(pinned — archiving unpins)</span>' : '');
+  lab.querySelector('input').addEventListener('change', async e => {
+    const r = await api('archive', {id: m.id, on: e.target.checked, force: true});
+    if (r.error) notice(r.error);
+    await refresh();
+    showInfo(m.id, infoX, infoY);
+  });
+  const gc = document.createElement('span'); gc.className = 'hint'; gc.style.marginLeft = '10px'; gc.textContent = m.gc || '';
+  row.append(kk, lab, gc);
   return row;
 }
 function descEditor(m) {

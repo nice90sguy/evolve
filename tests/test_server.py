@@ -87,7 +87,7 @@ def main():
         assert s == 200 and sorted(plan["archive"]) == [X, k]
         s, plan = post("/api/prune", {"id": X, "apply": True})
         snap = state()
-        assert "archived" in snap["tags"][str(X)] and snap["working"] is None
+        assert X in snap["archived"] and "archived" not in snap["tags"][str(X)] and snap["working"] is None
         s, m = post("/api/meta", {"id": X})
         assert m["gc"].startswith("archived - purgeable")
         s, r = post("/api/gc", {})
@@ -98,14 +98,25 @@ def main():
         except urllib.error.HTTPError as e:
             assert e.code == 404
         s, r = post("/api/discard", {"id": A})
-        assert s == 200 and "archived" in state()["tags"][str(A)]
+        assert s == 404 and r["error"].startswith("kept: pinned")      # pinned => not archived
+        s, r = post("/api/tag", {"id": A, "remove": ["pinned"]})
+        s, r = post("/api/discard", {"id": A})
+        assert s == 200 and A in state()["archived"]
+        s, r = post("/api/archive", {"id": A, "on": False})
+        assert r["touched"] == [A] and state()["archived"] == []
+        s, r = post("/api/tag", {"id": A, "add": ["pinned"]})
+        s, r = post("/api/archive", {"id": A})
+        assert r["touched"] == [] and state()["archived"] == []          # pinned: skipped
+        s, r = post("/api/archive", {"id": A, "force": True})
+        assert r["touched"] == [A] and "pinned" not in state()["tags"][str(A)]
         s, r = post("/api/lora", {"op": "create", "name": "julie"})
         assert s == 200 and r["loras"] == [{"name": "julie", "files": []}]
         s, r = post("/api/lora", {"op": "create", "name": "bad name"})
         assert s == 400
         s, r = post("/api/train", {"name": "julie", "family": "zimage"})
         assert s == 400 and "empty dataset" in r["error"], r
-        s, r = post("/api/tag", {"id": A, "add": ["lora_dataset_julie"], "remove": ["archived"]})
+        s, r = post("/api/archive", {"id": A, "on": False})
+        s, r = post("/api/tag", {"id": A, "add": ["lora_dataset_julie"]})
         s, r = post("/api/train", {"name": "julie", "family": "illustrious"})
         assert s == 400 and "not trainable" in r["error"], r       # validated before anything runs
         s, r = post("/api/train", {"name": "julie", "family": "sdxl"})

@@ -19,6 +19,7 @@ from pathlib import Path
 
 NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
 TAG_RE = re.compile(r"[^\s,]{1,64}")          # a word: no whitespace, no commas
+RESERVED_WORDS = {"archived"}                 # a state bit, never a word
 DEFAULT_SETTINGS = {"default_tags": []}
 
 _ROOT = None
@@ -60,7 +61,7 @@ def is_valid_name(name):
 
 
 def is_valid_tag(word):
-    return bool(word) and bool(TAG_RE.fullmatch(word))
+    return bool(word) and bool(TAG_RE.fullmatch(word)) and word not in RESERVED_WORDS
 
 
 def clean_tags(words):

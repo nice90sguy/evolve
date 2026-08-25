@@ -7,11 +7,17 @@ images) and a DESCRIPTION (1-1 with the image). Lineage doctrine: a tree
 with a DAG overlay - parent 0 is the continuity carrier; co-parents are
 journal edges only. The journal is the sole lineage authority.
 
-Tags (2026-08-25): `archived` and `pinned` are ordinary words the app also
-uses; no word is protected. At birth a child copies its MOTHER's words
-minus those two, plus the settings' default tags. Cascade (add to / remove
-from descendants along parent-0 edges) is one explicit operation, one
-journal event. Single-threaded access is guaranteed by `lock`.
+Tags (2026-08-25) are COLLECTIONS the user curates; the code reads two of
+them (`pinned`, `lora_dataset_*`) because they are collections with
+consequences, and owns none. ARCHIVED IS A BIT, NOT A WORD (decision
+2026-08-25: "don't go crazy with tags unless they make the code more
+maintainable; keep them as a layer on top of some fixed rules") - a
+record flag with `archive` / `restore` journal events, like `purged`.
+Rule: pinned => not archived (pinning restores; archiving unpins only when
+forced). At birth a child copies its MOTHER's words minus `pinned`, plus
+the settings' default tags. Cascade (add to / remove from descendants
+along parent-0 edges) is one explicit operation, one journal event.
+Single-threaded access is guaranteed by `lock`.
 """
 import json
 import threading
@@ -25,8 +31,9 @@ from image_meta import evolve_chunk, glean_recipe
 from project import clean_tags, load_settings
 
 TABS = ("create", "derive", "camera")
-ARCHIVED, PINNED = "archived", "pinned"
-NOT_INHERITED = {ARCHIVED, PINNED}
+PINNED = "pinned"
+NOT_INHERITED = {PINNED}
+LEGACY_ARCHIVED_WORD = "archived"     # pre-bit journals carried it as a word
 
 
 def empty_candidates():
@@ -57,15 +64,26 @@ class Store:
                 ev = json.loads(line)
                 t = ev["t"]
                 if t == "image":
-                    ev["tags"] = clean_tags(ev.get("tags") or [])
+                    tags = ev.get("tags") or []
+                    ev["archived"] = bool(ev.get("archived")) or LEGACY_ARCHIVED_WORD in tags
+                    ev["tags"] = clean_tags(tags)
                     ev["description"] = ev.get("description") or ""
                     self.images[ev["id"]] = ev
                     self.next_id = max(self.next_id, ev["id"] + 1)
                 elif t == "tag":
+                    add, rm = ev.get("add") or [], ev.get("remove") or []
                     for i in ev.get("ids", []):
                         r = self.images.get(i)
                         if r:
-                            self._apply_tags(r, ev.get("add") or [], ev.get("remove") or [])
+                            self._apply_tags(r, add, rm)
+                            if LEGACY_ARCHIVED_WORD in add:       # pre-bit journals
+                                r["archived"] = True
+                            elif LEGACY_ARCHIVED_WORD in rm:
+                                r["archived"] = False
+                elif t in ("archive", "restore"):
+                    for i in ev["ids"]:
+                        if i in self.images:
+                            self.images[i]["archived"] = t == "archive"
                 elif t == "describe":
                     r = self.images.get(ev["id"])
                     if r:
@@ -76,11 +94,10 @@ class Store:
                 elif t == "hist" and ev["id"] is not None:
                     if not self.history or self.history[-1] != ev["id"]:
                         self.history.append(ev["id"])
-                elif t == "gc":                            # legacy: archive = a word now
+                elif t == "gc":                            # legacy archive event
                     for i in ev["ids"]:
-                        r = self.images.get(i)
-                        if r:
-                            self._apply_tags(r, [ARCHIVED], [])
+                        if i in self.images:
+                            self.images[i]["archived"] = True
                 elif t == "purge":
                     for i in ev["ids"]:
                         if i in self.images:
@@ -130,7 +147,7 @@ class Store:
     # ---------- images ----------
 
     def alive(self, i):
-        """Exists and not purged (archived images ARE alive - hidden by a word)."""
+        """Exists and not purged (archived images ARE alive - hidden by a flag)."""
         return i is not None and i in self.images and not self.images[i].get("purged")
 
     def alive_ids(self):
@@ -143,7 +160,10 @@ class Store:
         return word in self.tags(i)
 
     def is_archived(self, i):
-        return self.has(i, ARCHIVED)
+        return self.alive(i) and bool(self.images[i].get("archived"))
+
+    def archived_ids(self):
+        return [i for i in self.alive_ids() if self.images[i].get("archived")]
 
     def with_word(self, word):
         return [i for i in self.alive_ids() if word in self.images[i]["tags"]]
@@ -173,7 +193,7 @@ class Store:
         return f"evolve/{self.name}/{i}.png"
 
     def birth_tags(self, mother=None):
-        """A new image's words: the mother's minus archived/pinned, plus the
+        """A new image's words: the mother's minus pinned, plus the
         settings' default tags (fiat/import: default tags only)."""
         inherited = [w for w in self.tags(mother) if w not in NOT_INHERITED] if mother else []
         return clean_tags(inherited + load_settings()["default_tags"])
@@ -196,7 +216,8 @@ class Store:
             rec = {"t": "image", "id": i, "file": f"{i}.png", "source": source,
                    "w": img.width, "h": img.height, "sha1": sha1,
                    "recipe": recipe, "parents": parents or [],
-                   "tags": clean_tags(tags or []), "description": description}
+                   "tags": clean_tags(tags or []), "description": description,
+                   "archived": False}
             if ts:
                 rec["ts_origin"] = ts
             self._append(rec)
@@ -288,6 +309,35 @@ class Store:
                 self._append({"t": "describe", "id": i, "description": text})
             return True
 
+    # ---------- archived: a bit, not a word ----------
+
+    def archive(self, ids, force=False):
+        """Set the archived flag. Pinned images are SKIPPED unless force,
+        which unpins them first (pinned => not archived). Returns the ids
+        actually archived; one journal event."""
+        with self.lock:
+            todo = [i for i in ids if self.alive(i) and not self.images[i].get("archived")]
+            if not force:
+                todo = [i for i in todo if not self.has(i, PINNED)]
+            else:
+                pinned = [i for i in todo if self.has(i, PINNED)]
+                if pinned:
+                    self.tag(pinned, remove=[PINNED])
+            for i in todo:
+                self.images[i]["archived"] = True
+            if todo:
+                self._append({"t": "archive", "ids": todo})
+            return todo
+
+    def restore(self, ids):
+        with self.lock:
+            todo = [i for i in ids if self.is_archived(i)]
+            for i in todo:
+                self.images[i]["archived"] = False
+            if todo:
+                self._append({"t": "restore", "ids": todo})
+            return todo
+
     def ancestors_closure(self, ids):
         keep, todo = set(), list(ids)
         while todo:
@@ -314,6 +364,7 @@ class Store:
                 self.path(i).unlink(missing_ok=True)
                 self.staged_path(i).unlink(missing_ok=True)
                 self.images[i]["purged"] = True
+                self.images[i]["archived"] = False
             if ids:
                 self._append({"t": "purge", "ids": ids})
             self.forget(ids)
@@ -399,7 +450,8 @@ class Store:
                 for lst in self.state["candidates"].values():
                     if i in lst:
                         lst.remove(i)
-                self.tag([i], add=[PINNED], remove=[ARCHIVED])
+                self.restore([i])                       # pinned => not archived
+                self.tag([i], add=[PINNED])
                 self.save_state()
             else:
                 self.tag([i], remove=[PINNED])
@@ -435,7 +487,7 @@ class Store:
                 "ts": r.get("ts"), "recipe": r.get("recipe"),
                 "parents": r.get("parents"), "tags": list(r["tags"]),
                 "description": r.get("description") or "",
-                "archived": ARCHIVED in r["tags"], "purged": bool(r.get("purged")),
+                "archived": bool(r.get("archived")), "purged": bool(r.get("purged")),
                 "path": str(self.path(i))}
 
     def snapshot(self):
@@ -455,6 +507,7 @@ class Store:
                            "path": str(self.path(i))}
             return {"root_name": self.name,
                     "all_ids": alive,
+                    "archived": [i for i in alive if self.images[i].get("archived")],
                     "tags": {i: self.images[i]["tags"] for i in alive},
                     "descriptions": {i: self.images[i]["description"] for i in alive
                                      if self.images[i]["description"]},

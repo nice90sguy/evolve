@@ -758,6 +758,35 @@ behaviour they record is unchanged (builders verified byte-identical).
   same features), `api_to_ui.py`, README with the manual curl-level steps,
   and the original experiment payloads.
 
+## Tags doctrine, settled 2026-08-25 (after building v1)
+
+**"Don't go crazy with tags unless they make the code more maintainable;
+keep them as a layer on top of some fixed rules."** (user). Tags are
+COLLECTIONS the user curates. The code may READ two of them because they
+are collections with consequences - `pinned` (the keep pile: sweep and
+prune skip it) and `lora_dataset_<name>` (a LoRA's dataset) - and owns
+none. **`archived` is a BIT, not a word** (record flag, `archive` /
+`restore` journal events, like `purged`): it is read everywhere (views,
+garbage, sync, sweep, prune) and never behaves like a category, so it was
+a state flag in a tag costume. `archived` is a RESERVED word (rejected by
+`clean_tags`). Rule: pinned => not archived - `pin()` restores,
+`archive()` SKIPS pinned images unless `force` (which unpins them);
+discard on a pinned image refuses ("kept: pinned"). UI: archived images
+are hidden from every view unless the word-bar toggle "show archived" is
+on; the `trash` chip is the view of exactly the archived; the Info popup
+has an `archived` checkbox (force) + the gc verdict. Legacy journals with
+the word are translated on load. `/api/archive {id|ids, on, force}`.
+Derived words (`cam:low`, `fam:klein`) are a future rendering of recipe
+facts - computed, never stored, never typed by hand ("if the system can
+compute it, the user never types it").
+
+**Drop-into-view (agreed, NOT BUILT):** a view is a single word;
+dropping an image into it adds the word, Del removes it; drops never
+cascade; multi-word/boolean views are browsing-only ("You can't drop this
+item into a view - see Set Theory"); the relational Genealogy sheets and
+derived-word views are never drop targets. Dragging a view chip onto a
+view adds the word to every member.
+
 ## Model family & validation — BUILT 2026-08-25
 
 `model_family.py` is the ONE definition of the closed model set:

@@ -189,6 +189,8 @@ main{display:grid;grid-template-rows:auto 1fr auto;height:100vh;min-width:0}
 .chip .cnt{opacity:.55;font-size:11px}
 .chip.on{border-color:var(--focus);background:rgba(88,166,255,.18)}
 .chip.arch{border-style:dashed;opacity:.8}
+.chip.tog{opacity:.75;gap:4px}
+.chip.tog input{margin:0}
 .chip .x{opacity:.6;margin-left:2px;font-size:13px;line-height:1}
 .chip .x:hover{opacity:1;color:#f88}
 .iw-tags{display:flex;flex-wrap:wrap;gap:4px;align-items:center;max-width:520px}

@@ -77,7 +77,7 @@ def main():
         one, kid, gk, f1 = by_prompt["eve"], by_prompt["kid"], by_prompt["grandkid"], by_prompt["from one"]
         assert st.tags(one) == ["soft", "shared", "lora_dataset_julie"], st.tags(one)
         assert st.tags(kid) == ["soft", "pinned", "lora_dataset_julie"], st.tags(kid)
-        assert st.tags(gk) == ["soft", "archived"]
+        assert st.tags(gk) == ["soft"] and st.is_archived(gk)
         assert st.images[kid]["parents"] == [one] and st.images[gk]["parents"] == [kid]
         assert st.images[f1]["parents"] == [one], st.images[f1]      # verified via sha256
         assert st.images[one]["description"] == "head shot"          # trigger stripped

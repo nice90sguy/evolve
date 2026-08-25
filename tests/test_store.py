@@ -16,7 +16,7 @@ import lora
 import project
 import trash
 from controls import restore_from_image
-from store import ARCHIVED, PINNED, Store
+from store import PINNED, Store
 
 
 def fresh_root():
@@ -43,7 +43,8 @@ def test_tags_and_cascade():
         k2 = st.add_image(IM, "gen", recipe={"prompt": "k", "seed": 4}, parents=[X], tags=st.birth_tags(X))
         co = st.add_image(IM, "gen", recipe={"prompt": "co", "seed": 5}, parents=[A, X], tags=st.birth_tags(A))
         assert st.descendants(A) == [X, k, k2, co] and st.descendants(X) == [k, k2]
-        st.tag([k2], add=[ARCHIVED])
+        st.archive([k2])
+        assert st.is_archived(k2) and st.tag([k2], add=["archived"]) == []   # reserved word: no-op
         touched = st.tag([X], add=["freddy"], cascade=True)          # ADD skips archived
         assert touched == [X, k] and "freddy" not in st.tags(k2)
         st.tag([k], add=["mine"])                                     # independent child word survives
@@ -51,17 +52,21 @@ def test_tags_and_cascade():
         assert touched == [X, k, k2] and "mine" in st.tags(k) and "julie" not in st.tags(k2)
         assert st.words()["freddy"] == 2 and st.with_word(PINNED) == [A]
         # garbage = archived and not an ancestor of anything live
-        st.tag([X], add=[ARCHIVED])
+        st.archive([X])
         assert st.garbage() == [k2]                                   # X has live child k
-        st.tag([k, co], add=[ARCHIVED])
+        st.archive([k, co])
         assert st.garbage() == [X, k, k2, co]
+        assert st.archive([A]) == []                                  # pinned: skipped
+        assert st.archive([A], force=True) == [A] and not st.has(A, PINNED)
+        st.restore([A]); st.tag([A], add=[PINNED])
         purged = st.purge()
         assert purged == [X, k, k2, co] and not st.alive(X) and st.alive(A)
         assert not st.path(X).exists()
         # journal replays to the same state
         st2 = Store(rt)
         assert st2.alive_ids() == [A] and st2.tags(A) == ["softlock", "(c)2026", "julie", PINNED]
-        assert not st2.alive(X) and st2.words() == {"softlock": 1, "(c)2026": 1, "julie": 1, PINNED: 1}
+        assert not st2.alive(X) and not st2.is_archived(A)
+        assert st2.words() == {"softlock": 1, "(c)2026": 1, "julie": 1, PINNED: 1}
         print("tags/cascade/purge ok")
     finally:
         shutil.rmtree(rt, ignore_errors=True)
@@ -88,6 +93,9 @@ def test_trash_ops():
         assert st.is_archived(k) and not st.has(k, PINNED) and st.state["working"] is None
         assert trash.discard(st, A) is None and st.is_archived(A)
         assert trash.verdict(st, A) == "archived - purgeable"
+        st.restore([A]); st.pin(A, True)
+        assert trash.discard(st, A).startswith("kept: pinned")
+        st.pin(A, False); st.archive([A])
         assert trash.purge(st)["removed"] == 4
         assert trash.discard(st, A) == "not found"
         print("trash ops ok")
@@ -147,8 +155,10 @@ def test_import_and_loras():
         assert lora.caption("julie", "hello") == ("julie, hello", None)
         assert lora.caption("julie", "julie x")[1] is not None          # double prefix warning
         assert lora.caption("julie", "") == ("julie", None)
-        st.tag([i], add=[ARCHIVED])
+        st.archive([i])
         assert lora.dataset_ids(st, "julie") == []                      # archived leaves datasets
+        st.pin(i, True)
+        assert not st.is_archived(i) and lora.dataset_ids(st, "julie") == [i]   # pinning restores
         print("import/loras ok")
     finally:
         shutil.rmtree(rt, ignore_errors=True)

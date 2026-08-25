@@ -1,12 +1,13 @@
-"""trash.py - what may go, in the tag vocabulary (2026-08-25).
+"""trash.py - what may go (2026-08-25).
 
-discard = put the word `archived` on one image; sweep = on the unpinned
-candidates of a tab before a round; prune = cascade it down a branch.
-Archived images stay on disk and in every view that shows them; GARBAGE =
-archived AND not an ancestor of any unarchived image (Store.garbage), and
-PURGE deletes those files - the only surviving integrity rule.
+archived is a BIT on the record (Store.archive / restore). discard = set
+it on one image; sweep = on the unpinned candidates of a tab before a
+round; prune = on a branch. Pinned images are never archived unless
+forced (which unpins them). Archived images stay on disk, hidden; GARBAGE
+= archived AND not an ancestor of any unarchived image (Store.garbage),
+and PURGE deletes those files - the only surviving integrity rule.
 """
-from store import ARCHIVED, PINNED
+from store import PINNED
 
 
 def discard(store, i):
@@ -15,7 +16,9 @@ def discard(store, i):
     with store.lock:
         if not store.alive(i):
             return "not found"
-        store.tag([i], add=[ARCHIVED])
+        if store.has(i, PINNED):
+            return "kept: pinned (unpin first)"
+        store.archive([i])
         store.forget([i])
         store.save_state()
         return None
@@ -29,7 +32,7 @@ def sweep(store, tab):
         doomed = [q for q in store.state["candidates"].get(tab, [])
                   if q not in live and not store.has(q, PINNED) and not store.is_archived(q)]
         if doomed:
-            store.tag(doomed, add=[ARCHIVED])
+            store.archive(doomed)
             store.forget(doomed)
             store.save_state()
             print(f"swept {len(doomed)} unkept candidate(s) from {tab}")
@@ -69,7 +72,7 @@ def prune_apply(store, root_id, force=False):
         plan = prune_plan(store, root_id, force)
         if not plan or not plan["archive"]:
             return plan
-        store.tag(plan["archive"], add=[ARCHIVED], remove=[PINNED] if force else [])
+        store.archive(plan["archive"], force=force)
         store.forget(plan["archive"])
         store.save_state()
         print(f"pruned #{root_id}: {len(plan['archive'])} archived"

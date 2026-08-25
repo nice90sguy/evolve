@@ -212,6 +212,24 @@ async def handle_tag(request):
     return ok(touched=touched)
 
 
+async def handle_archive(request):
+    """{id|ids, on:bool} -> {touched:[ids]}. Archiving skips pinned images
+    (force:true unpins them); restoring never touches words."""
+    store = ctx(request).store
+    b = await request.json()
+    ids = id_list(b)
+    if not ids:
+        return error("nothing to do")
+    if b.get("on", True):
+        touched = store.archive(ids, force=bool(b.get("force")))
+        with store.lock:
+            store.forget(touched)
+            store.save_state()
+    else:
+        touched = store.restore(ids)
+    return ok(touched=touched)
+
+
 async def handle_describe(request):
     b = await request.json()
     if not ctx(request).store.describe(b.get("id"), b.get("description") or ""):
@@ -441,7 +459,7 @@ async def handle_train_abort(request):
 ROUTES = {
     "state": handle_state, "settings": handle_settings, "controls": handle_controls,
     "place": handle_place, "clear": handle_clear, "pin": handle_pin, "slots": handle_slots,
-    "tag": handle_tag, "describe": handle_describe,
+    "tag": handle_tag, "describe": handle_describe, "archive": handle_archive,
     "generate": handle_generate, "pov": handle_pov, "abort": handle_abort,
     "family": handle_family, "meta": handle_meta, "discard": handle_discard,
     "prune": handle_prune, "gc": handle_gc,

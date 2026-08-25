@@ -6,7 +6,7 @@ SCAN a directory of alien images into the store (same code, on demand).
 
 Migration: every `<root>/<project>/images/*.png` (and `archive/`) becomes
 `<root>/images/<new id>.png`; the project name becomes a word on the image,
-`archived` for archived ones, `pinned` from the old state, `lora_dataset_
+the archived BIT for archived ones, `pinned` from the old state, `lora_dataset_
 <asset>` from the old assets.json datasets (descriptions kept, the leading
 trigger stripped), recipes/parents/history from the old journals. Files
 with no journal record are absorbed from their own metadata: recipe from
@@ -35,7 +35,7 @@ from lora import family_of_path
 from image_file import IMAGE_EXTS, flattened_rgb, sha1_of, text_chunks
 from image_meta import glean_recipe
 from image_utils import has_alpha
-from store import ARCHIVED, PINNED, Store
+from store import PINNED, Store
 
 
 def strip_trigger(desc, name):
@@ -160,7 +160,7 @@ def migrate(root):
         for f in sorted((pd / "images").glob("*.png"), key=lambda p: p.stem):
             files[f] = []
         for f in sorted((pd / "archive").glob("*.png") if (pd / "archive").is_dir() else []):
-            files[f] = [ARCHIVED]
+            files[f] = ["__archived__"]
         report.append(f"{name}: {len(files)} files, {len(records)} records")
         for f, extra in files.items():
             try:
@@ -168,12 +168,11 @@ def migrate(root):
             except ValueError:
                 oid = None
             rec = records.get(oid)
-            tags = [name] + extra
-            if oid in gone and ARCHIVED not in tags:
-                tags.append(ARCHIVED)
-            if oid in pins:
-                tags.append(PINNED)
+            archived = "__archived__" in extra or oid in gone
+            tags = [name] + ([PINNED] if oid in pins and not archived else [])
             i = absorb(store, f, tags, origin_map, origin_sha, rec, name, report)
+            if archived:
+                store.archive([i])
             if oid is not None:
                 origin_map[(name, oid)] = i
                 origin_sha[(name, oid)] = sha256_file(f)
