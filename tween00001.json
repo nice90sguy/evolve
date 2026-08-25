@@ -1,0 +1,28 @@
+{
+ "start": "D:/projects/softlock/game_illustrious/images/286.png",
+ "end": "D:/projects/softlock/game_illustrious/images/204.png",
+ "prompt": "she gazes at us while we move round and below her",
+ "negative": "bad quality video, blurry, static frame, still image, jpeg artifacts, deformed, disfigured, malformed limbs, extra fingers, messy background, subtitles, watermark",
+ "seed": 499526127174,
+ "width": 512,
+ "height": 512,
+ "frames": 81,
+ "fps": 16,
+ "steps": 20,
+ "cfg": 3.5,
+ "shift": 8.0,
+ "cwd": "D:/projects/ComfyUI/akasutils",
+ "argv": [
+  "--end",
+  "D:/projects/softlock/game_illustrious/images/204.png",
+  "--start",
+  "D:/projects/softlock/game_illustrious/images/286.png",
+  "--prompt",
+  "she gazes at us while we move round and below her",
+  "--width",
+  "512",
+  "--height",
+  "512"
+ ],
+ "ts": "2026-08-22 12:35:11"
+}
