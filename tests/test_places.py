@@ -74,6 +74,16 @@ def main():
         (rt / "scenes" / "alien.png").unlink()
         r = st2.rescan()
         assert r["missing"] == 1 and st2.missing
+        # spoofable identity: empty the trash, then a NEW file wearing the
+        # old id's name revives the record - lineage and words intact
+        st2.archive([A], force=True)
+        st2.empty_trash()
+        assert not st2.alive(A) and not st2.path(A).is_file()
+        Image.new("RGB", (8, 8), (200, 100, 50)).save(rt / "scenes" / "1.png")
+        r = st2.rescan()
+        assert r["revived"] == 1 and st2.alive(A) and st2.image_dir(A) == "scenes"
+        st3 = Store(rt)
+        assert st3.alive(A)                     # revive replays from the journal
         print("places ALL OK")
     finally:
         shutil.rmtree(rt, ignore_errors=True)

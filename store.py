@@ -142,6 +142,10 @@ class Store:
                     for i in ev["ids"]:
                         if i in self.images:
                             self.images[i]["purged"] = True
+                elif t == "revive":            # an id-named file reappeared
+                    for i in ev["ids"]:
+                        if i in self.images:
+                            self.images[i]["purged"] = False
         if self.state_file.exists():
             self.state = json.loads(self.state_file.read_text(encoding="utf-8"))
         else:
@@ -530,7 +534,7 @@ class Store:
         them so you can track them properly"); journaled images with no
         file -> missing (placeholders; the journal never forgets)."""
         with self.lock:
-            report = {"moved": 0, "imported": 0, "missing": 0, "skipped": []}
+            report = {"moved": 0, "imported": 0, "missing": 0, "revived": 0, "skipped": []}
             found = {}                     # id -> (dir, file)
             unknown = []
             by_sha = None
@@ -544,8 +548,8 @@ class Store:
                 m = _ID_NAME.fullmatch(p.name)
                 i = int(m.group(1)) if m else None
                 if i is not None and i in self.images and i not in found:
-                    found[i] = (d, p.name)
-                    continue
+                    found[i] = (d, p.name)     # filename = identity, by design:
+                    continue                   # swapping bytes in is a user power
                 if by_sha is None:
                     by_sha = {r["sha1"]: j for j, r in self.images.items()
                               if r.get("sha1") and self.alive(j)}
@@ -555,10 +559,12 @@ class Store:
                 else:
                     unknown.append((p, d))
             moves = []
+            revived = []
             for i, (d, file) in found.items():
                 r = self.images[i]
-                if not self.alive(i):
-                    continue
+                if r.get("purged"):            # its file is back (or a stand-in
+                    r["purged"] = False        # wearing its name): the record
+                    revived.append(i)          # revives, lineage and words intact
                 if (r["dir"], r["file"]) != (d, file):
                     r["dir"], r["file"] = d, file
                     if d != TRASH:
@@ -568,6 +574,9 @@ class Store:
             if moves:
                 self._append({"t": "move", "moves": moves, "source": "rescan"})
                 report["moved"] = len(moves)
+            if revived:
+                self._append({"t": "revive", "ids": sorted(revived)})
+                report["revived"] = len(revived)
             for p, d in unknown:
                 try:
                     if p.suffix.lower() == ".png":

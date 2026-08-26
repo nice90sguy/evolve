@@ -346,8 +346,8 @@ function render() {
   $('#rootname').textContent = S.root_name || '';
   if (S.rescan && S.rescan.ts !== lastRescanTs) {
     lastRescanTs = S.rescan.ts;
-    if (S.rescan.missing || S.rescan.moved || S.rescan.imported)
-      toast(`rescan: ${S.rescan.moved} moved, ${S.rescan.imported} imported, ${S.rescan.missing} missing`,
+    if (S.rescan.missing || S.rescan.moved || S.rescan.imported || S.rescan.revived)
+      toast(`rescan: ${S.rescan.moved} moved, ${S.rescan.imported} imported, ${S.rescan.missing} missing` + (S.rescan.revived ? `, ${S.rescan.revived} revived` : ''),
             S.rescan.missing ? 'warn' : '');
   }
   const dtg = $('#deftags');
@@ -456,7 +456,7 @@ $('#rescan').addEventListener('click', async () => {
   const r = await api('rescan', {});
   if (r.error) { notice(r.error); return; }
   toast(`rescan: ${r.moved} moved, ${r.imported} imported, ${r.missing} missing` +
-    (r.skipped.length ? `, ${r.skipped.length} skipped` : ''));
+    (r.revived ? `, ${r.revived} revived` : '') + (r.skipped.length ? `, ${r.skipped.length} skipped` : ''));
   refresh();
 });
 { // tree | browser divider in A mode

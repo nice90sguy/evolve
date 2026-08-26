@@ -758,6 +758,20 @@ behaviour they record is unchanged (builders verified byte-identical).
   same features), `api_to_ui.py`, README with the manual curl-level steps,
   and the original experiment payloads.
 
+## Identity is the FILENAME, deliberately spoofable (user rule 2026-08-26)
+
+The id in the filename IS identity; sha1 is only the import-dedupe /
+no-id-name fallback, NEVER a verifier against the record. "Silently
+tricking the app is useful, even if the image is unrelated": swap any
+bytes in under an id-named file (Photoshop retouch, or a wholly new
+image) and the record - lineage, words, place, history - carries on.
+Consequences accepted and BUILT: a purged record REVIVES when an id-named
+file reappears (rescan -> `revive {ids}` journal event, toast counts it);
+"bytes immutable" is amended to "immutable through the app"; /img went
+back from immutable-forever caching to no-cache + Last-Modified 304s
+(swapped bytes must actually show; the earlier lag was the ping, not
+revalidation). Do NOT re-propose sha1-verified identity - rejected.
+
 ## Trash doctrine v2 — BUILT 2026-08-26 (integrity is a WARNING, not a gate)
 
 User rule: "the most a user can do WITHIN the app is (1) move items to the
