@@ -20,6 +20,7 @@ lands in its mother's FOLDER (fiat: the current folder). Cascade is one
 explicit operation, one journal event. `lock` guards all access.
 """
 import json
+import os
 import re
 import shutil
 import threading
@@ -38,6 +39,8 @@ PINNED = "pinned"
 NOT_INHERITED = {PINNED}
 LEGACY_ARCHIVED_WORD = "archived"
 TRASH = ".trash"
+USE_RECYCLE_BIN = os.environ.get("EVOLVE_HARD_DELETE") != "1"   # tests hard-delete
+                                                                # (no polluting the bin)
 DEFAULT_DIR = "images"              # where the pre-Places flat store becomes a folder
 RESERVED_DIRS = {"loras", "_train", "_debug", "_migrated"}   # never part of the tree
 _ID_NAME = re.compile(r"(\d+)(?:[_-][^.]*)?\.png$", re.I)
@@ -72,6 +75,7 @@ class Store:
         self.lock = threading.RLock()
         self.images = {}          # id -> record (dir, file, tags, description, purged?)
         self.missing = set()      # journaled ids whose file was not found by rescan
+        self.last_rescan = None
         self.history = []
         self.next_id = 1
         self._load()
@@ -296,27 +300,61 @@ class Store:
                     done += self.move([i], self.images[i]["home"])
             return done
 
-    def garbage(self):
-        """In .trash AND not an ancestor of any live image - the only
-        integrity rule: provenance closure of what is out of the trash."""
+    def load_bearing(self):
+        """Trashed images some LIVE image descends from. Integrity is a
+        WARNING, not a gate (user rule): emptying takes these too, and the
+        UI shows missing-ancestor placeholders afterwards."""
         live = [i for i in self.alive_ids() if not self.is_archived(i)]
         keep = self.ancestors_closure(live)
-        return [i for i in self.alive_ids() if self.is_archived(i) and i not in keep]
+        return [i for i in self.alive_ids() if self.is_archived(i) and i in keep]
 
-    def purge(self):
-        """DELETE the files of garbage images (+ staged links). Explicit,
-        irreversible; the journal keeps their records (purged)."""
+    def empty_trash_plan(self):
+        """The impact report for the confirm dialog - counts and samples,
+        never an itemised ream (the trash may hold thousands)."""
         with self.lock:
-            ids = self.garbage()
+            ids = self.archived_ids()
+            bearing = self.load_bearing()
+            bearing_set = set(bearing)
+            orphaned = sorted({j for j in self.alive_ids() if not self.is_archived(j)
+                               and (set(self.ancestors_closure([j])) - {j}) & bearing_set})
+            size = 0
             for i in ids:
-                self.path(i).unlink(missing_ok=True)
+                try:
+                    size += self.path(i).stat().st_size
+                except OSError:
+                    pass
+            return {"count": len(ids), "bytes": size,
+                    "load_bearing": len(bearing), "sample_bearing": bearing[:8],
+                    "orphaned": len(orphaned), "sample_orphaned": orphaned[:8]}
+
+    def empty_trash(self):
+        """EVERYTHING in .trash -> the OS recycle bin (never a hard delete
+        - Windows is the final undo), staged hardlinks unlinked so no
+        bytes survive in the ComfyUI input dir. The journal keeps every
+        record (purged); descendants show missing-ancestor placeholders."""
+        with self.lock:
+            ids = self.archived_ids()
+            binned = []
+            for i in ids:
+                p = self.path(i)
+                try:
+                    if p.is_file():
+                        if USE_RECYCLE_BIN:
+                            import send2trash
+                            send2trash.send2trash(str(p))
+                        else:
+                            p.unlink()
+                except OSError as e:
+                    print(f"empty trash: #{i} {e}")
+                    continue
                 self.staged_path(i).unlink(missing_ok=True)
                 self.images[i]["purged"] = True
-            if ids:
-                self._append({"t": "purge", "ids": ids})
-            self.forget(ids)
+                binned.append(i)
+            if binned:
+                self._append({"t": "purge", "ids": binned, "to": "recycle-bin"})
+            self.forget(binned)
             self.save_state()
-            return ids
+            return binned
 
     # ---------- tags & words ----------
 
@@ -563,6 +601,8 @@ class Store:
             self.missing = {i for i in self.alive_ids() if i not in found
                             and not self.path(i).is_file()}
             report["missing"] = len(self.missing)
+            report["ts"] = time.strftime("%H:%M:%S")
+            self.last_rescan = report
             return report
 
     # ---------- live state ----------
@@ -738,6 +778,7 @@ class Store:
                     "all_ids": alive,
                     "archived": self.archived_ids(),
                     "missing": sorted(self.missing),
+                    "rescan": self.last_rescan,
                     "tags": {i: self.images[i]["tags"] for i in alive},
                     "descriptions": {i: self.images[i]["description"] for i in alive
                                      if self.images[i]["description"]},

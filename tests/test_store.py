@@ -19,6 +19,10 @@ from controls import restore_from_image
 from store import PINNED, Store
 
 
+import store as store_mod
+store_mod.USE_RECYCLE_BIN = False
+
+
 def fresh_root():
     rt = Path(tempfile.mkdtemp(prefix="evolve_test_"))
     project.set_root(rt)
@@ -53,13 +57,15 @@ def test_tags_and_cascade():
         assert st.words()["freddy"] == 2 and st.with_word(PINNED) == [A]
         # garbage = archived and not an ancestor of anything live
         st.archive([X])
-        assert st.garbage() == [k2]                                   # X has live child k
+        assert st.load_bearing() == [X]                               # X has live child k
         st.archive([k, co])
-        assert st.garbage() == [X, k, k2, co]
+        assert st.load_bearing() == []
         assert st.archive([A]) == []                                  # pinned: skipped
         assert st.archive([A], force=True) == [A] and not st.has(A, PINNED)
         st.restore([A]); st.tag([A], add=[PINNED])
-        purged = st.purge()
+        plan = st.empty_trash_plan()
+        assert plan["count"] == 4 and plan["load_bearing"] == 0
+        purged = st.empty_trash()
         assert purged == [X, k, k2, co] and not st.alive(X) and st.alive(A)
         assert not st.path(X).exists()
         # journal replays to the same state
@@ -92,11 +98,11 @@ def test_trash_ops():
         assert sorted(plan["archive"]) == [X, k] and plan["unpin"] == [k]
         assert st.is_archived(k) and not st.has(k, PINNED) and st.state["working"] is None
         assert trash.discard(st, A) is None and st.is_archived(A)
-        assert trash.verdict(st, A) == "archived - purgeable"
+        assert trash.verdict(st, A) == "in the trash"
         st.restore([A]); st.pin(A, True)
         assert trash.discard(st, A).startswith("kept: pinned")
         st.pin(A, False); st.archive([A])
-        assert trash.purge(st)["removed"] == 4
+        assert trash.empty_trash(st, apply=True)["removed"] == 4
         assert trash.discard(st, A) == "not found"
         print("trash ops ok")
     finally:

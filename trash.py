@@ -80,17 +80,19 @@ def prune_apply(store, root_id, force=False):
         return plan
 
 
-def purge(store):
-    """Collect garbage: delete the files of purgeable images."""
-    ids = store.purge()
+def empty_trash(store, apply=False):
+    """apply=False -> the impact plan for the dialog; True -> recycle."""
+    if not apply:
+        return store.empty_trash_plan()
+    ids = store.empty_trash()
     return {"removed": len(ids), "kept": len(store.alive_ids())}
 
 
 def verdict(store, i):
     """The Info Window's gc line."""
     if store.images[i].get("purged"):
-        return "purged"
+        return "emptied to the recycle bin"
     if not store.is_archived(i):
         return "live"
-    return "archived - purgeable" if i in store.garbage() \
-        else "archived - kept (an unarchived image descends from it)"
+    bearing = "a live image descends from it - emptying will leave missing-parent placeholders"
+    return f"in the trash ({bearing})" if i in store.load_bearing() else "in the trash"

@@ -50,9 +50,11 @@ def main():
     X = st.add_image(im, "gen", recipe={"prompt": "x", "seed": 2}, parents=[A], tags=st.birth_tags(A))
     k = st.add_image(im, "gen", recipe={"prompt": "k", "seed": 3}, parents=[X], tags=st.birth_tags(X))
     st.save_state()
+    import os
+    env = dict(os.environ, EVOLVE_HARD_DELETE="1")   # tests never touch the real bin
     srv = subprocess.Popen([sys.executable, str(HERE / "evolve.py"), "--root", str(rt),
                             "--port", str(PORT)],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
     try:
         for _ in range(40):
             try:
@@ -89,8 +91,10 @@ def main():
         snap = state()
         assert X in snap["archived"] and "archived" not in snap["tags"][str(X)] and snap["working"] is None
         s, m = post("/api/meta", {"id": X})
-        assert m["gc"].startswith("archived - purgeable")
-        s, r = post("/api/gc", {})
+        assert m["gc"].startswith("in the trash"), m
+        s, p = post("/api/empty_trash", {})
+        assert s == 200 and p["count"] == 2 and p["load_bearing"] == 0, p
+        s, r = post("/api/empty_trash", {"apply": True})
         assert r["removed"] == 2 and state()["all_ids"] == [A]
         try:
             get(f"/img/{X}")

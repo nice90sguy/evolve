@@ -9,8 +9,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PIL import Image
 
 import project
+import store as store_mod
 import trash
 from store import DEFAULT_DIR, TRASH, Store, valid_dir
+
+store_mod.USE_RECYCLE_BIN = False
 
 IM = Image.new("RGB", (8, 8), (1, 2, 3))
 
@@ -39,13 +42,13 @@ def main():
         assert st.archive([kid]) == [] and not st.is_archived(kid)
         assert st.archive([B]) == [B] and st.is_archived(B)
         assert (rt / TRASH / f"{B}.png").is_file()
-        assert trash.verdict(st, B).startswith("archived - kept")        # kid is live
+        assert trash.verdict(st, B).startswith("in the trash (a live image")   # kid is live
         st.restore([B])
         assert st.image_dir(B) == "chars/julie"                          # home remembered
         st.archive([B])
         st.pin(kid, False)
         st.archive([kid])
-        assert sorted(st.garbage()) == [B, kid]
+        assert st.load_bearing() == [] and st.empty_trash_plan()["count"] == 2
         # rescan: external move, alien file, missing
         (rt / "scenes").mkdir()
         shutil.move(str(rt / "chars/julie" / "1.png"), str(rt / "scenes" / "1.png"))

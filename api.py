@@ -399,8 +399,15 @@ async def handle_prune(request):
     return web.json_response(plan)
 
 
-async def handle_gc(request):
-    return web.json_response(trash.purge(ctx(request).store))
+async def handle_empty_trash(request):
+    """{apply: bool}: the impact plan, or the deed (OS recycle bin)."""
+    store = ctx(request).store
+    b = await request.json()
+    if not b.get("apply"):
+        return web.json_response(trash.empty_trash(store, apply=False))
+    r = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: trash.empty_trash(store, apply=True))
+    return web.json_response(r)
 
 
 # ---------- import ----------
@@ -518,7 +525,7 @@ ROUTES = {
     "winav": handle_winav,
     "generate": handle_generate, "pov": handle_pov, "abort": handle_abort,
     "family": handle_family, "meta": handle_meta, "discard": handle_discard,
-    "prune": handle_prune, "gc": handle_gc,
+    "prune": handle_prune, "empty_trash": handle_empty_trash,
     "import": handle_import, "import_url": handle_import_url,
     "import_folder": handle_import_folder,
     "lora": handle_lora, "train": handle_train, "train_abort": handle_train_abort,

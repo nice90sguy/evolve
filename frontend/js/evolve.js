@@ -60,7 +60,8 @@ const Sel = (() => {
 })();
 // where imports land when nothing is selected
 const selTarget = () => Sel.target === 'none' ? {target: 'working', index: 0} : Sel.get();
-let lastSelId = null;         // the last selected image id, app-global (mode switches keep it)
+let lastSelId = null;
+let lastRescanTs = null;         // the last selected image id, app-global (mode switches keep it)
 let pollTimer = null;
 
 const api = (path, body) => fetch('/api/' + path, body === undefined ? {} :
@@ -121,7 +122,7 @@ function renderWords() {
   const tg = document.createElement('label');
   tg.className = 'chip tog' + (showArchived ? ' on' : '');
   tg.title = 'show archived images inside the views (browse the trash itself in A mode)';
-  tg.innerHTML = `<input type="checkbox" ${showArchived ? 'checked' : ''}> show archived`;
+  tg.innerHTML = `<input type="checkbox" ${showArchived ? 'checked' : ''}> show trashed`;
   tg.querySelector('input').addEventListener('change', e => { showArchived = e.target.checked; localStorage.setItem('view:archived', showArchived ? '1' : '0'); render(); });
   bar.appendChild(tg);
   $('#viewname').textContent = curWord || 'View';
@@ -280,6 +281,14 @@ function thumb(id, cls) {
   // baked title goes stale (a moved image kept showing its old path)
   im.addEventListener('mouseenter', () => { im.title = tip(id); });
   im.addEventListener('dragstart', e => dragStart(e, id));
+  im.addEventListener('error', () => {   // file gone (emptied / deleted outside)
+    const d = document.createElement('div');
+    d.className = 'gonebox';
+    d.dataset.id = id;
+    d.textContent = '#' + id + String.fromCharCode(10) + 'file gone';
+    d.title = '#' + id + ' — the record survives in the journal; the file was emptied or deleted';
+    if (im.parentNode) im.replaceWith(d);
+  }, {once: true});
   return im;
 }
 function tip(id) {
@@ -335,6 +344,12 @@ function render() {
   }
   $('#seedused').textContent = S.last_base_seed ? `(last used ${S.last_base_seed})` : '';
   $('#rootname').textContent = S.root_name || '';
+  if (S.rescan && S.rescan.ts !== lastRescanTs) {
+    lastRescanTs = S.rescan.ts;
+    if (S.rescan.missing || S.rescan.moved || S.rescan.imported)
+      toast(`rescan: ${S.rescan.moved} moved, ${S.rescan.imported} imported, ${S.rescan.missing} missing`,
+            S.rescan.missing ? 'warn' : '');
+  }
   const dtg = $('#deftags');
   if (document.activeElement !== dtg) dtg.value = ((S.settings && S.settings.default_tags) || []).join(', ');
   familyUI();
@@ -676,7 +691,17 @@ async function loraDrop(dt) {
   else if (!own && !uri) flash('drop an image (or drag one from any strip)');
 }
 
-// ---------- prune dialog ----------
+// ---------- dialogs (the prune box doubles as a generic confirm) ----------
+let dlgGo = null;
+function openDialog(title, body, goLabel, onGo) {
+  dlgGo = onGo;
+  $('#pforce').parentElement.style.display = 'none';
+  $('#prunedlg .ptitle').textContent = title;
+  $('#prunedlg .pbody').textContent = body;
+  $('#pgo').textContent = goLabel;
+  $('#pgo').disabled = false;
+  $('#prunedlg').hidden = false;
+}
 let pruneId = null, prunePlan = null;
 function pruneText(p) {
   const n = p.archive.length;
@@ -703,7 +728,9 @@ function pruneText(p) {
   return t;
 }
 async function openPrune(id, plan) {
-  pruneId = id; prunePlan = plan;
+  pruneId = id; prunePlan = plan; dlgGo = null;
+  $('#pforce').parentElement.style.display = '';
+  $('#pgo').textContent = 'Prune';
   $('#pforce').checked = false;
   $('#prunedlg .ptitle').textContent = `Prune #${id} and its branch`;
   $('#prunedlg .pbody').textContent = pruneText(plan);
@@ -720,6 +747,7 @@ $('#pforce').addEventListener('change', async () => {
 });
 $('#pcancel').addEventListener('click', closePrune);
 $('#pgo').addEventListener('click', async () => {
+  if (dlgGo) { const go = dlgGo; dlgGo = null; closePrune(); await go(); return; }
   const r = await api('prune', {id: pruneId, force: $('#pforce').checked, apply: true});
   closePrune();
   if (r.error) notice(r.error);
@@ -890,9 +918,17 @@ async function renderGenealogy() {
     famData = r; famKey = key;
   }
   // auto-hide a trivial family: no parents, no children, no siblings but itself
-  g.hidden = !famData.parents.length && !famData.children.length && famData.siblings.length <= 1;
+  g.hidden = !famData.parents.filter(t => !t.gone).length && !famData.children.length
+    && famData.siblings.length <= 1 && !famData.parents.length;
   if (g.hidden) return;
   const tile = t => {
+    if (t.gone) {
+      const d = document.createElement('div');
+      d.className = 'gonebox car-gone';
+      d.textContent = '#' + t.id + String.fromCharCode(10) + 'gone';
+      d.title = '#' + t.id + ' — ancestor whose file is gone (journal remembers its recipe)';
+      return d;
+    }
     const im = thumb(t.id);
     im.addEventListener('dblclick', () => act('place', {id: t.id, target: 'working'}));
     return im;
@@ -1190,8 +1226,24 @@ $('#deftags').addEventListener('change', () => {
   api('settings', {default_tags: $('#deftags').value.split(',')}).then(refresh);
 });
 $('#gc').addEventListener('click', async () => {
-  if (!confirm('PURGE: permanently delete the files of every archived image that no unarchived image descends from? This cannot be undone.')) return;
-  const r = await api('gc', {}); flash(`purged ${r.removed} file(s), ${r.kept} images remain`); refresh();
+  const p = await api('empty_trash', {});
+  if (p.error) { notice(p.error); return; }
+  if (!p.count) { flash('the trash is empty'); return; }
+  const mb = (p.bytes / 1048576).toFixed(1);
+  let body = `${p.count} file(s), ${mb} MB \u2192 Windows Recycle Bin.`;
+  if (p.load_bearing) {
+    body += String.fromCharCode(10) + String.fromCharCode(10) +
+      `${p.load_bearing} of them are ancestors of ${p.orphaned} live image(s)` +
+      ` (e.g. ${p.sample_orphaned.map(i => '#' + i).join(', ')}).` + String.fromCharCode(10) +
+      'Those images will show missing-parent placeholders and their recipes can no longer be re-rendered exactly.';
+  }
+  body += String.fromCharCode(10) + String.fromCharCode(10) +
+    'Nothing is hard-deleted: the Recycle Bin is the final undo, and the journal keeps every record.';
+  openDialog('Empty trash', body, 'Empty trash', async () => {
+    const r = await api('empty_trash', {apply: true});
+    if (r.error) notice(r.error); else flash(`${r.removed} file(s) \u2192 Recycle Bin`);
+    refresh();
+  });
 });
 // ---------- the carousel component ----------
 // Every .car gets: sticky open/close, single-image scroll steps that

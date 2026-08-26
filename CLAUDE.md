@@ -758,6 +758,28 @@ behaviour they record is unchanged (builders verified byte-identical).
   same features), `api_to_ui.py`, README with the manual curl-level steps,
   and the original experiment payloads.
 
+## Trash doctrine v2 — BUILT 2026-08-26 (integrity is a WARNING, not a gate)
+
+User rule: "the most a user can do WITHIN the app is (1) move items to the
+trash, (2) empty the trash". The app may UNLINK anything but NEVER
+hard-deletes: **Empty trash sends EVERYTHING in `.trash/` to the Windows
+Recycle Bin** (send2trash; Windows is the final undo), unlinks the staged
+hardlinks (no cruft/bytes left in the ComfyUI input dir), journals
+`purge {ids, to: recycle-bin}`. The ancestor-closure machinery changed
+jobs: `Store.load_bearing()` no longer gates - it powers the IMPACT
+REPORT in the confirm dialog (`empty_trash_plan`: counts + samples, never
+itemised reams - the trash may hold thousands). Consequences are made
+visible, not forbidden: gone ancestors render as `gonebox` placeholders
+(Family sheets include gone parents; every thumb swaps to a placeholder
+on img error), verdicts say "in the trash (a live image descends from it
+...)" / "emptied to the recycle bin". Pinned keeps its veto-with-force on
+discard. Externally deleted files: rescan -> `missing` -> same
+placeholders + a rescan toast in the UI (snapshot.rescan). Vocabulary is
+ONE word now - trash ("show trashed", "Empty trash"); "archived" survives
+only in internal names. Tests set EVOLVE_HARD_DELETE=1 /
+store.USE_RECYCLE_BIN=False so they never touch the real bin.
+`/api/empty_trash {apply}` replaced `/api/gc`.
+
 ## Places — BUILT 2026-08-26 (spec below held; build notes here)
 
 store.py is place-aware: records carry `dir`/`file`/`home`; `move` journal

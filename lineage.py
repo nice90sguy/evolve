@@ -29,7 +29,8 @@ def family(store, i):
         alive = store.alive
         return {
             "id": i,
-            "parents": [{"id": p} for p in (rec.get("parents") or []) if alive(p)],
+            "parents": [{"id": p, "gone": not alive(p) or p in store.missing}
+                        for p in (rec.get("parents") or [])],
             "siblings": [{"id": j} for j, r in sorted(store.images.items())
                          if alive(j) and sibling_key(r) == key],
             "children": [{"id": j} for j, r in sorted(store.images.items())
