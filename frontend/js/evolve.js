@@ -1318,7 +1318,7 @@ $('#gc').addEventListener('click', async () => {
   let body = `${p.count} file(s), ${mb} MB \u2192 Windows Recycle Bin.`;
   if (p.load_bearing) {
     body += String.fromCharCode(10) + String.fromCharCode(10) +
-      `${p.load_bearing} of them are ancestors of ${p.orphaned} live image(s)` +
+      `${p.load_bearing} of them are ancestors of ${p.orphaned} tracked image(s)` +
       ` (e.g. ${p.sample_orphaned.map(i => '#' + i).join(', ')}).` + String.fromCharCode(10) +
       'Those images will show missing-parent placeholders and their recipes can no longer be re-rendered exactly.';
   }

@@ -42,7 +42,7 @@ def main():
         assert st.archive([kid]) == [] and not st.is_archived(kid)
         assert st.archive([B]) == [B] and st.is_archived(B)
         assert (rt / TRASH / f"{B}.png").is_file()
-        assert trash.verdict(st, B).startswith("in the trash (a live image")   # kid is live
+        assert trash.verdict(st, B).startswith("in the trash (one or more images were generated")   # kid is tracked
         st.restore([B])
         assert st.image_dir(B) == "chars/julie"                          # home remembered
         st.archive([B])

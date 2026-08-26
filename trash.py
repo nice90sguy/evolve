@@ -105,8 +105,8 @@ def empty_trash(store, apply=False):
 def verdict(store, i):
     """The Info Window's gc line."""
     if store.images[i].get("purged"):
-        return "emptied to the recycle bin"
+        return "purged (no longer tracked)"
     if not store.is_archived(i):
-        return "live"
-    bearing = "a live image descends from it - emptying will leave missing-parent placeholders"
+        return "tracked"
+    bearing = "one or more images were generated from it" if store.has_children(i) else "no children"
     return f"in the trash ({bearing})" if i in store.load_bearing() else "in the trash"

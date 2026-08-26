@@ -430,6 +430,11 @@ class Store:
                 out[w] = out.get(w, 0) + 1
         return out
 
+    def has_children(self, i):
+        """Any tracked image that used i as an input (any parent slot)."""
+        return any(self.alive(j) and i in (r.get("parents") or [])
+                   for j, r in self.images.items())
+
     def descendants(self, i):
         """The mother-line subtree under i (parent-0 edges), excluding i."""
         kids = {}

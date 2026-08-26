@@ -81,7 +81,7 @@ def main():
         s, r = post("/api/describe", {"id": k, "description": "a kid"})
         assert state()["descriptions"][str(k)] == "a kid"
         s, m = post("/api/meta", {"id": k})
-        assert m["tags"] == ["softlock", "freddy"] and m["description"] == "a kid" and m["gc"] == "live"
+        assert m["tags"] == ["softlock", "freddy"] and m["description"] == "a kid" and m["gc"] == "tracked"
         s, _ = post("/api/place", {"id": k, "target": "working"})
         s, r = post("/api/place", {"id": k, "target": "slot", "index": 0})
         assert s == 409 and "read-only" in r["error"]
