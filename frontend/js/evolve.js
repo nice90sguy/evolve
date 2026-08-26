@@ -353,9 +353,12 @@ function render() {
 // One image, one place. The tree is real directories under the root; the
 // browser shows the open folder; drops onto tree nodes MOVE (place is
 // exclusive - unlike tag/dataset drops, which only add a word).
-// A anywhere = reveal the selected image: open its folder in the manager
-// with the image selected and scrolled into view. Inert when already in A
-// (user rule); with no selection it just opens the manager where it was.
+// A anywhere = reveal the selected image: open its folder in the manager,
+// scrolled into view. The SELECTION STAYS WHERE IT WAS (its solid blue
+// border in E survives the round trip); the revealed tile shows as an
+// ALIAS (dashed) because it displays the same underlying image - reveal
+// never steals the selection (user rule). Inert when already in A; with
+// no selection it just opens the manager where it was.
 async function revealInPlaces() {
   if (mode === 'assets') return;
   const id = lastSelId;
@@ -364,8 +367,8 @@ async function revealInPlaces() {
   setMode('assets');
   await refresh();
   if (id == null) return;
-  const k = placesIds().indexOf(id);
-  if (k >= 0) Sel.set('abrowse', k);
+  const t = document.querySelector('#abgrid [data-id="' + id + '"]');
+  if (t) t.scrollIntoView({block: 'nearest'});
 }
 function placesIds() {
   const cwd = S.cwd;
