@@ -1328,12 +1328,13 @@ document.addEventListener('keydown', async e => {
     act('pin', {id, on: true});   // P pins the selection from ANYWHERE; Del inside Pinned unpins
   } else if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !gridOn) {
     // Tab = strict A <-> task toggle (in a form field it keeps its native
-    // focus-move meaning via the typing() guard above): in a task -> A
-    // (plain switch, no reveal - A key does that); in A -> the last task
-    // of this session, or nothing if there is none yet
+    // focus-move meaning via the typing() guard above): in a task -> the
+    // FULL A action (switch AND reveal the selection's folder - Tab is a
+    // synonym, not a lesser A); in A -> the last task of this session, or
+    // nothing if there is none yet
     e.preventDefault();
     if (mode === 'assets') { if (lastTask) setMode(lastTask); }
-    else setMode('assets');
+    else revealInPlaces();
   } else if (!e.ctrlKey && !e.metaKey && !e.altKey && !gridOn && MODE_KEYS[e.key.toLowerCase()]) {
     const m = MODE_KEYS[e.key.toLowerCase()];  // Blender-style: E/L/A/S switch modes;
     if (m === 'assets') revealInPlaces();      // A = REVEAL the selection in its folder
