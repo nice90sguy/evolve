@@ -139,7 +139,20 @@ main{flex:1;display:grid;grid-template-rows:auto 1fr;min-width:0;min-height:0}
 .iconb:hover{color:var(--fg)}
 .car summary .sz svg{vertical-align:middle}
 /* ---- asset browser (v4): swaps in for the Generate panel region ---- */
-#loras{grid-column:3;grid-row:1;display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--bg)}
+#loras{grid-column:1 / -1;grid-row:1;display:grid;grid-template-columns:minmax(260px,1fr) 6px minmax(230px,340px);min-height:0;min-width:0;background:var(--bg)}
+#dataset,#train{display:flex;flex-direction:column;min-height:0;min-width:0}
+#lsplit{cursor:col-resize;background:var(--line)}
+#lsplit:hover,#lsplit.drag{background:var(--acc)}
+#trainbody{display:flex;flex-direction:column;gap:10px;padding:12px;font-size:12px;color:var(--dim);overflow-y:auto}
+#trainbody label{display:flex;gap:6px;align-items:center}
+#trainbody select,#trainbody input{background:#111;color:var(--fg);border:1px solid var(--line);padding:3px}
+#trainbody button{background:#333;color:var(--fg);border:1px solid var(--line);cursor:pointer;padding:6px 10px}
+#maketrain{font-weight:600}
+#trainstat{white-space:pre-line;overflow-wrap:anywhere}
+#lorafiles{display:flex;flex-direction:column;gap:3px;font-size:11px}
+#lorafiles .lf{display:flex;gap:6px;align-items:baseline;overflow-wrap:anywhere}
+#lorafiles .fam{flex:none;border:1px solid var(--line);border-radius:8px;padding:0 6px;font-size:10px}
+#lorafiles .cur{color:var(--acc)}
 #loras[hidden]{display:none}
 #loras .ahead{display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line);font-size:12px;color:var(--dim);flex-wrap:wrap}
 #loras .ahead select{background:#111;color:var(--fg);border:1px solid var(--line);padding:3px;min-width:120px}

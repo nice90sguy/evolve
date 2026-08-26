@@ -122,19 +122,28 @@
       </div>
     </div>
   <div id="loras" hidden>
-    <div class="ahead">
-      <select id="lorasel" title="a LoRA = a name (the trigger word) + its trained files per model; its dataset is every unarchived image carrying the word lora_dataset_&lt;name&gt;"></select>
-      <button id="loranew" title="create a new LoRA (its name is the trigger word)">+ new</button>
-      <button id="loradel" title="forget this LoRA (its files stay on disk; images and their words are untouched)">delete</button>
-      <button id="lorafolder" title="import every image in a disk folder (recursive, server-side) with this LoRA's dataset word">add folder…</button>
-      <span class="hint">drag any image in to add the dataset word · Del removes it · the description is a plain description of the image; the trigger is prefixed at training time</span>
-      <span style="flex:1"></span>
-      <select id="trainfam" title="training family"><option value="zimage">Z-Image</option><option value="klein">Flux Klein (experimental)</option></select>
-      <button id="maketrain" title="sync the dataset to _train/ and train a LoRA — this IS the explicit say-so">Make LoRA</button>
-      <button id="trainstop" hidden>Stop training</button>
-      <span id="trainstat"></span>
+    <div id="dataset">
+      <div class="ahead"><b>Dataset</b>
+        <select id="lorasel" title="a LoRA = a name (the trigger word) + its trained files per model; its dataset is every unarchived image carrying the word lora_dataset_&lt;name&gt;"></select>
+        <button id="loranew" title="create a new LoRA (its name is the trigger word)">+ new</button>
+        <button id="loradel" title="forget this LoRA (its files stay on disk; images and their words are untouched)">delete</button>
+        <button id="lorafolder" title="import every image in a disk folder (recursive, server-side) with this LoRA's dataset word">add folder…</button>
+        <span class="hint">drag any image in to add the dataset word · Del removes it · descriptions are plain; the trigger is prefixed at training time</span>
+      </div>
+      <div id="lgrid" class="drop" data-target="lgrid" data-index="0" tabindex="0" title="click to focus, then Ctrl-V pastes a clipboard image straight into this dataset"></div>
     </div>
-    <div id="lgrid" class="drop" data-target="lgrid" data-index="0" tabindex="0" title="click to focus, then Ctrl-V pastes a clipboard image straight into this dataset"></div>
+    <div id="lsplit" title="drag to resize"></div>
+    <div id="train">
+      <div class="ahead"><b>Train</b></div>
+      <div id="trainbody">
+        <label>family <select id="trainfam" title="training family"><option value="zimage">Z-Image</option><option value="klein">Flux Klein (experimental)</option></select></label>
+        <label>steps <input type="number" id="trainsteps" min="1" max="100000" placeholder="400" style="width:72px" title="training steps (empty = the trainer's default, 400; loss is uninformative — judge by rendering)"></label>
+        <button id="maketrain" title="sync the dataset to _train/ and train — this IS the explicit say-so">Make LoRA</button>
+        <button id="trainstop" hidden>Stop training</button>
+        <div id="trainstat"></div>
+        <div id="lorafiles" title="this LoRA's trained files; the newest per family is what the dropdown resolves to"></div>
+      </div>
+    </div>
   </div>
   <div id="page-assets" class="stub" hidden>Asset manager — the directory tree of app-tracked images (the Places build). Coming next.</div>
   <div id="page-story" class="stub" hidden>Story — keyframes, dialog, transitions, tweens, decision points. Later.</div>

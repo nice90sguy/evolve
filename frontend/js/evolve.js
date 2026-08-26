@@ -408,7 +408,23 @@ function renderLoras() {
     g.appendChild(t);
   });
 }
+function renderLoraFiles() {
+  const box = $('#lorafiles');
+  const x = curLora();
+  if (!x) { box.innerHTML = ''; return; }
+  const newest = {};
+  x.files.forEach(f => { newest[f.family] = f.path; });   // last per family wins
+  box.innerHTML = x.files.length ? '<b>trained files</b>' : '<span class="hint">no trained files yet</span>';
+  [...x.files].reverse().forEach(f => {
+    const d = document.createElement('div');
+    d.className = 'lf' + (newest[f.family] === f.path ? ' cur' : '');
+    d.innerHTML = `<span class="fam">${f.family}</span><span>${f.path.split('/').pop()}</span>`;
+    d.title = f.path + (newest[f.family] === f.path ? '  (what the dropdown resolves to)' : '  (older version)');
+    box.appendChild(d);
+  });
+}
 function trainUI() {
+  if (mode === 'loras' && S) renderLoraFiles();
   const tf = $('#trainfam');
   if (S && !tf.dataset.built) {   // trainable families come from the server
     tf.dataset.built = '1';
@@ -429,7 +445,7 @@ $('#maketrain').addEventListener('click', async () => {
   const fam = $('#trainfam').value;
   if (!confirm(`Train "${a.name}" (${fam}) on ${datasetIds(a).length} image(s)?` +
       String.fromCharCode(10) + 'This runs on the GPU and blocks generation until done.')) return;
-  const r = await api('train', {name: a.name, family: fam});
+  const r = await api('train', {name: a.name, family: fam, steps: +$('#trainsteps').value || undefined});
   if (r.error) alert(r.error);
   refresh();
 });
@@ -914,6 +930,20 @@ function readControls() {
   });
   bar.addEventListener('dblclick', () => { localStorage.removeItem(KEY); work.style.gridTemplateColumns = ''; if (S) layoutSlots(); });
 })();
+{ // Dataset | Train divider in L mode: dragging sets the Train pane width
+  const box = $('#loras'), bar = $('#lsplit'), KEY = 'split:lora';
+  const apply = px => { box.style.gridTemplateColumns = `minmax(260px,1fr) 6px ${px}px`; };
+  const saved = +localStorage.getItem(KEY);
+  if (saved) requestAnimationFrame(() => apply(saved));
+  bar.addEventListener('pointerdown', e => {
+    e.preventDefault(); bar.setPointerCapture(e.pointerId); bar.classList.add('drag');
+    const move = ev => apply(Math.max(230, Math.min(box.clientWidth - 280, Math.round(box.getBoundingClientRect().right - ev.clientX))));
+    const up = () => { bar.classList.remove('drag'); bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up);
+      const w = parseInt(box.style.gridTemplateColumns.split(' ').pop(), 10); if (w) localStorage.setItem(KEY, w); };
+    bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up);
+  });
+  bar.addEventListener('dblclick', () => { localStorage.removeItem(KEY); box.style.gridTemplateColumns = ''; });
+}
 let saveT = null;
 function saveControls() { clearTimeout(saveT); saveT = setTimeout(() => api('controls', readControls()), 400); }
 ['#prompt', '#negative', '#family', '#steps', '#cfg', '#lora', '#lstr', '#lock', '#vary', '#width', '#height', '#whitebg', '#fresh',
