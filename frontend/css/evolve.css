@@ -184,7 +184,7 @@ main{flex:1;display:grid;grid-template-rows:1fr;min-width:0;min-height:0}
 .atile img{width:150px;height:150px;object-fit:cover;border:2px solid var(--line);border-radius:4px;cursor:pointer}
 .atile .gonebox{width:150px;height:150px;display:flex;align-items:center;justify-content:center;border:2px dashed var(--line);border-radius:4px;color:var(--dim);font-size:10px;text-align:center;white-space:pre-line}
 .atile .frn{position:absolute;top:4px;left:4px;background:rgba(0,0,0,.6);color:var(--dim);font-size:9px;padding:1px 5px;border-radius:3px;pointer-events:none}
-.adesc{width:100%;height:50px;background:#111;border:1px solid var(--line);color:var(--fg);font:11px system-ui;padding:3px;resize:vertical}
+.adesc{width:100%;height:50px;flex:none;background:#111;border:1px solid var(--line);color:var(--fg);font:11px system-ui;padding:3px;resize:vertical}
 .adesc.bad{border-color:#c55}
 .atile .ax{position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:3px;cursor:pointer;padding:1px 6px;display:none}
 .atile:hover .ax{display:block}
@@ -233,7 +233,8 @@ main{flex:1;display:grid;grid-template-rows:1fr;min-width:0;min-height:0}
 /* thumbnails are wrapped (.th) so state marks can sit in their corners */
 .th{position:relative;display:inline-block;flex:none;line-height:0}
 .th>img{display:block}
-#abgrid .th,#gridbody .th,.slot .th,.ref .th,#stagebox .th,.atile .th{width:100%;height:100%}
+#abgrid .th,#gridbody .th,.slot .th,.ref .th,#stagebox .th{width:100%;height:100%}
+.atile .th{width:150px;height:150px;flex:none}
 #stagebox .th{display:flex;align-items:center;justify-content:center}
 #stagebox .th>img{max-width:100%;max-height:100%;object-fit:contain;width:auto;height:auto}
 .pinmark,.freshmark{position:absolute;pointer-events:none;line-height:1}
