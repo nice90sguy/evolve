@@ -416,10 +416,13 @@ class Store:
         return clean_tags(inherited + load_settings()["default_tags"])
 
     def birth_dir(self, mother=None):
-        """A bred image lands in its MOTHER's folder; fiat in the cwd."""
+        """A bred image lands in its MOTHER's folder; fiat in the cwd. A new
+        image is never BORN into the trash (the cwd may be .trash while the
+        user inspects it - reveal opens it there)."""
         if mother is not None and self.alive(mother) and not self.is_archived(mother):
             return self.images[mother]["dir"]
-        return self.cwd()
+        d = self.cwd()
+        return DEFAULT_DIR if d.split("/")[0] == TRASH else d
 
     def add_image(self, img, source, recipe=None, parents=None, sha1=None,
                   chunks=None, inputs=None, tags=None, description=None, ts=None,
@@ -430,8 +433,10 @@ class Store:
             i = self.next_id
             self.next_id += 1
             d = valid_dir(dir) if dir else None
-            if d is None:
-                d = self.cwd()
+            if d is None:                        # defaulting to the cwd: never
+                d = self.cwd()                   # birth INTO the trash
+                if d.split("/")[0] == TRASH:
+                    d = DEFAULT_DIR
             (self.dir / d).mkdir(parents=True, exist_ok=True)
             all_chunks = dict(chunks or {})
             all_chunks["evolve"] = evolve_chunk(self.name, i, source, recipe, inputs)

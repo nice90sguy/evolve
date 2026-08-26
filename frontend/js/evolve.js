@@ -344,6 +344,20 @@ function render() {
 // One image, one place. The tree is real directories under the root; the
 // browser shows the open folder; drops onto tree nodes MOVE (place is
 // exclusive - unlike tag/dataset drops, which only add a word).
+// A anywhere = reveal the selected image: open its folder in the manager
+// with the image selected and scrolled into view. Inert when already in A
+// (user rule); with no selection it just opens the manager where it was.
+async function revealInPlaces() {
+  if (mode === 'assets') return;
+  const id = lastSelId;
+  const dir = (id != null && S) ? S.paths[id] : null;
+  if (dir && dir !== S.cwd) await api('cwd', {dir});
+  setMode('assets');
+  await refresh();
+  if (id == null) return;
+  const k = placesIds().indexOf(id);
+  if (k >= 0) Sel.set('abrowse', k);
+}
 function placesIds() {
   const cwd = S.cwd;
   return (S.all_ids || []).filter(id => S.paths[id] === cwd);
@@ -1271,7 +1285,9 @@ document.addEventListener('keydown', async e => {
   } else if (e.key === 'p' && id != null) {
     act('pin', {id, on: true});   // P pins the selection from ANYWHERE; Del inside Pinned unpins
   } else if (!e.ctrlKey && !e.metaKey && !e.altKey && !gridOn && MODE_KEYS[e.key.toLowerCase()]) {
-    setMode(MODE_KEYS[e.key.toLowerCase()]);   // Blender-style: E/L/A/S switch modes
+    const m = MODE_KEYS[e.key.toLowerCase()];  // Blender-style: E/L/A/S switch modes;
+    if (m === 'assets') revealInPlaces();      // A = REVEAL the selection in its folder
+    else setMode(m);
   }
 });
 
