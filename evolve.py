@@ -48,6 +48,18 @@ def main():
                          "journal: run  python tools/migrate_projects.py --root "
                          f"{root}  first (tags replaced projects, 2026-08-25)")
     store = Store(root)
+    stranded = [i for i in store.alive_ids()
+                if store.is_archived(i) and not store.path(i).is_file()
+                and (root / "images" / store.images[i]["file"]).is_file()]
+    if stranded:
+        raise SystemExit(f"{len(stranded)} archived image(s) still live in images/ "
+                         "(pre-Places layout): run  python tools/migrate_projects.py "
+                         f"--root {root} --places  first")
+    r = store.rescan()
+    print(f"rescan: {r['moved']} moved, {r['imported']} imported, "
+          f"{r['missing']} missing" + (f", {len(r['skipped'])} skipped" if r["skipped"] else ""))
+    for line in r["skipped"][:10]:
+        print("  " + line)
     try:
         lora.load_loras()            # fail fast on a pre-family / pre-rename loras.json
     except lora.LorasFormatError as e:

@@ -145,6 +145,7 @@ const LISTS = {
   gkid:  () => famData && famData.children.map(x => x.id),
   grid:  () => (gridName && gridName !== 'grid') ? listFor(gridName) : null,
   lora:  () => { const x = curLora(); return x ? datasetIds(x) : null; },
+  abrowse: () => (mode === 'assets' && S) ? placesIds() : null,
 };
 function listFor(name) {
   if (!S) return null;
@@ -333,9 +334,91 @@ function render() {
   statusBar();
   renderGenealogy();
   renderLoras();
+  renderPlaces();
   trainUI();
   renderGrid();
   Sel.apply();
+}
+
+// ---------- A mode: the Places tree + browser ----------
+// One image, one place. The tree is real directories under the root; the
+// browser shows the open folder; drops onto tree nodes MOVE (place is
+// exclusive - unlike tag/dataset drops, which only add a word).
+function placesIds() {
+  const cwd = S.cwd;
+  return (S.all_ids || []).filter(id => S.paths[id] === cwd);
+}
+function renderPlaces() {
+  if (mode !== 'assets' || !S) return;
+  const tb = $('#treebody');
+  tb.innerHTML = '';
+  const counts = {};
+  Object.values(S.paths || {}).forEach(d => { counts[d] = (counts[d] || 0) + 1; });
+  (S.dirs || []).forEach(d => {
+    const n = document.createElement('div');
+    const depth = d === '.trash' ? 0 : d.split('/').length - 1;
+    n.className = 'dnode' + (d === S.cwd ? ' on' : '') + (d === '.trash' ? ' trash' : '');
+    n.style.paddingLeft = (8 + depth * 14) + 'px';
+    n.innerHTML = `<span>${d === '.trash' ? 'trash' : d.split('/').pop()}</span><span class="cnt">${counts[d] || 0}</span>`;
+    n.title = d;
+    n.addEventListener('click', () => act('cwd', {dir: d}));
+    n.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); n.classList.add('over'); });
+    n.addEventListener('dragleave', () => n.classList.remove('over'));
+    n.addEventListener('drop', async e => {
+      e.preventDefault(); e.stopPropagation(); n.classList.remove('over');
+      const own = e.dataTransfer.getData('application/x-evolver');
+      if (own) { const r = await api('move', {ids: [+own], to: d}); if (r.error) notice(r.error); else flash(`#${own} → ${d}`); refresh(); }
+    });
+    tb.appendChild(n);
+  });
+  $('#abtitle').textContent = S.cwd === '.trash' ? 'trash' : S.cwd;
+  const ids = placesIds();
+  $('#abcount').textContent = ids.length;
+  const g = $('#abgrid');
+  if (g.contains(document.activeElement)) return;
+  g.innerHTML = '';
+  ids.forEach((id, k) => {
+    if ((S.missing || []).includes(id)) {
+      const d = document.createElement('div');
+      d.className = 'gonebox';
+      d.textContent = '#' + id + ' missing' + String.fromCharCode(10) + '(file not found - rescan when it returns)';
+      g.appendChild(d);
+      return;
+    }
+    const im = thumb(id);
+    im.dataset.target = 'abrowse';
+    im.dataset.index = k;
+    im.addEventListener('dblclick', () => act('place', {id, target: 'working'}));
+    g.appendChild(im);
+  });
+}
+$('#mkdir').addEventListener('click', () => {
+  const name = prompt('new folder under "' + (S ? S.cwd : '') + '" (name only, no slashes):');
+  if (!name || !S) return;
+  const d = (S.cwd === '.trash' ? 'images' : S.cwd) + '/' + name.trim();
+  api('mkdir', {dir: d}).then(r => { if (r.error) notice(r.error); else act('cwd', {dir: r.dir}); });
+});
+$('#rescan').addEventListener('click', async () => {
+  flash('rescanning…');
+  const r = await api('rescan', {});
+  if (r.error) { notice(r.error); return; }
+  toast(`rescan: ${r.moved} moved, ${r.imported} imported, ${r.missing} missing` +
+    (r.skipped.length ? `, ${r.skipped.length} skipped` : ''));
+  refresh();
+});
+{ // tree | browser divider in A mode
+  const box = $('#page-assets'), bar = $('#asplit'), KEY = 'split:assets';
+  const apply = px => { box.style.gridTemplateColumns = `${px}px 6px 1fr`; };
+  const saved = +localStorage.getItem(KEY);
+  if (saved) requestAnimationFrame(() => apply(saved));
+  bar.addEventListener('pointerdown', e => {
+    e.preventDefault(); bar.setPointerCapture(e.pointerId); bar.classList.add('drag');
+    const move = ev => apply(Math.max(150, Math.min(box.clientWidth - 300, Math.round(ev.clientX - box.getBoundingClientRect().left))));
+    const up = () => { bar.classList.remove('drag'); bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up);
+      const w = parseInt(box.style.gridTemplateColumns, 10); if (w) localStorage.setItem(KEY, w); };
+    bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up);
+  });
+  bar.addEventListener('dblclick', () => { localStorage.removeItem(KEY); box.style.gridTemplateColumns = ''; });
 }
 
 // ---------- LoRA editor: images grouped by a LoRA's dataset word, with

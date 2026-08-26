@@ -145,7 +145,21 @@
       </div>
     </div>
   </div>
-  <div id="page-assets" class="stub" hidden>Asset manager — the directory tree of app-tracked images (the Places build). Coming next.</div>
+  <div id="page-assets" class="apage" hidden>
+    <div id="dirtree">
+      <div class="ahead"><b>Folders</b>
+        <button id="mkdir" title="new folder under the selected one">+ folder</button>
+        <button id="rescan" title="reconcile with the filesystem: Explorer moves become history, new files are imported in place, vanished files show as missing">rescan</button>
+      </div>
+      <div id="treebody" title="one image, one place. Click = open; drag an image onto a folder to move it. You can break things by deleting files inside the root, but adding files is fine — evolve imports them so you can track them properly."></div>
+    </div>
+    <div id="asplit" title="drag to resize"></div>
+    <div id="abrowser">
+      <div class="ahead"><b id="abtitle"></b> <span class="n" id="abcount">0</span>
+        <span class="hint">dbl-click = working image · drag onto a folder to move · right-click = info · new fiat images land in the open folder</span></div>
+      <div id="abgrid"></div>
+    </div>
+  </div>
   <div id="page-story" class="stub" hidden>Story — keyframes, dialog, transitions, tweens, decision points. Later.</div>
   </div>
   </main>

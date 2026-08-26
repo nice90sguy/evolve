@@ -758,7 +758,30 @@ behaviour they record is unchanged (builders verified byte-identical).
   same features), `api_to_ui.py`, README with the manual curl-level steps,
   and the original experiment payloads.
 
-## Places — SPECCED 2026-08-25, NOT BUILT (wait for the user's go)
+## Places — BUILT 2026-08-26 (spec below held; build notes here)
+
+store.py is place-aware: records carry `dir`/`file`/`home`; `move` journal
+events; archived == dir under `.trash/` (bit era translated on load);
+`archive()` moves (skips pinned unless force), `restore()` returns to
+`home`; birth: bred -> mother's folder, fiat/imports -> the cwd
+(`state.cwd`); `rescan()` reconciles (id-in-filename, sha1 fallback;
+unknown png RGB adopted IN PLACE, others get a flattened copy; vanished
+files -> `missing` placeholders); `valid_dir()` gates every path (reserved
+tops, no dot-dirs but .trash). API: cwd / move / mkdir / rescan; snapshot
+adds cwd/dirs/paths/missing. evolve.py startup: STRANDED CHECK (archived
+records whose files still sit in images/ = pre-Places layout -> refuse,
+pointing at `migrate_projects.py --places`) THEN rescan. A mode: Folders
+tree (counts, trash last, drag-onto-node MOVES - place is exclusive,
+unlike word drops) | browser of the open folder, draggable divider,
++ folder, rescan button. tests/test_places.py.
+**INCIDENT 2026-08-26 (why the ordering is law):** running rescan() by
+hand on the user's pre-Places root silently "corrected" 24 bit-era
+archived records back to images/ (their files had never moved) and
+journalled it. Repaired by replaying the journal to just before the bogus
+event and re-archiving. NEVER rescan a root that has not passed the
+stranded check.
+
+## Places — the spec as agreed (2026-08-25)
 
 Fresh model, not a modification of tags (user: "don't get there from
 here"). Three orthogonal axes, never overlapping:

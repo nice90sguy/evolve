@@ -233,6 +233,40 @@ async def handle_archive(request):
     return ok(touched=touched)
 
 
+async def handle_cwd(request):
+    """Set the working folder (created if missing). Fiat images land here."""
+    b = await request.json()
+    if not ctx(request).store.set_cwd(b.get("dir") or ""):
+        return error(f"bad folder {b.get('dir')!r}")
+    return ok()
+
+
+async def handle_move(request):
+    """{id|ids, to}: move images to another folder (drag in the tree)."""
+    store = ctx(request).store
+    b = await request.json()
+    moved = store.move(id_list(b), b.get("to") or "")
+    return ok(moved=moved)
+
+
+async def handle_mkdir(request):
+    from store import valid_dir
+    b = await request.json()
+    d = valid_dir(b.get("dir") or "")
+    if d is None:
+        return error(f"bad folder {b.get('dir')!r}")
+    (ctx(request).store.dir / d).mkdir(parents=True, exist_ok=True)
+    return ok(dir=d)
+
+
+async def handle_rescan(request):
+    """Reconcile the tree with the journal (Explorer edits become history;
+    alien files are imported in place)."""
+    store = ctx(request).store
+    r = await asyncio.get_event_loop().run_in_executor(None, store.rescan)
+    return ok(**r)
+
+
 async def handle_describe(request):
     b = await request.json()
     if not ctx(request).store.describe(b.get("id"), b.get("description") or ""):
@@ -463,6 +497,7 @@ ROUTES = {
     "state": handle_state, "settings": handle_settings, "controls": handle_controls,
     "place": handle_place, "clear": handle_clear, "pin": handle_pin, "slots": handle_slots,
     "tag": handle_tag, "describe": handle_describe, "archive": handle_archive,
+    "cwd": handle_cwd, "move": handle_move, "mkdir": handle_mkdir, "rescan": handle_rescan,
     "generate": handle_generate, "pov": handle_pov, "abort": handle_abort,
     "family": handle_family, "meta": handle_meta, "discard": handle_discard,
     "prune": handle_prune, "gc": handle_gc,

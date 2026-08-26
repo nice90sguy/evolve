@@ -275,6 +275,31 @@ def migrate_loras(root):
     return report
 
 
+def migrate_places(root):
+    """Pre-Places -> Places: archived images (journal flag/word era) whose
+    files still sit in images/ are physically moved to .trash/, with move
+    events. Everything else stays where it is - images/ is now just a
+    folder in the tree."""
+    from store import TRASH, Store
+    root = Path(root)
+    store = Store(root)
+    stranded = [i for i in store.alive_ids()
+                if store.is_archived(i) and not store.path(i).is_file()
+                and (root / "images" / store.images[i]["file"]).is_file()]
+    report = []
+    (root / TRASH).mkdir(exist_ok=True)
+    moves = []
+    for i in stranded:
+        f = store.images[i]["file"]
+        shutil.move(str(root / "images" / f), str(root / TRASH / f))
+        moves.append({"id": i, "to": TRASH})
+        report.append(f"  #{i} images/{f} -> {TRASH}/{f}")
+    if moves:
+        store.journal_event({"t": "move", "moves": moves, "source": "places-migration"})
+    report.append(f"done: {len(moves)} archived file(s) moved to {TRASH}/")
+    return report
+
+
 def scan(root, folder, tags):
     root, folder = Path(root), Path(folder)
     store = Store(root)
@@ -297,9 +322,13 @@ def main():
     ap.add_argument("--loras", action="store_true",
                     help="only move loras/<asset>/*.safetensors into per-family subdirs "
                          "and rewrite the entries as loras.json {path, family}")
+    ap.add_argument("--places", action="store_true",
+                    help="pre-Places root: move archived images' files into .trash/")
     a = ap.parse_args()
     project.set_root(a.root)
-    if a.loras:
+    if a.places:
+        report = migrate_places(a.root)
+    elif a.loras:
         report = migrate_loras(a.root)
     elif a.scan:
         report = scan(a.root, a.scan, a.tag)

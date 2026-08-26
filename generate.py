@@ -123,7 +123,8 @@ def do_generate(store, cfg, progress=None, should_abort=None, embed_workflow=Fal
     mother = cfg.ref_ids[0] if cfg.has_ref0 else None
     if mother is not None:
         store.hist_append(mother)            # history: bred-from only, co-parents excluded
-    tags = store.birth_tags(mother)          # mother's words (minus archived/pinned) + defaults
+    tags = store.birth_tags(mother)          # mother's words (minus pinned) + defaults
+    dest = store.birth_dir(mother)           # bred images land in the mother's folder
 
     ids = []
     for k in range(n):
@@ -156,7 +157,7 @@ def do_generate(store, cfg, progress=None, should_abort=None, embed_workflow=Fal
         with Image.open(src) as im:
             i = store.add_image(im.convert("RGB"), "gen", recipe, list(cfg.ref_ids),
                                 chunks=harvest_chunks(im, payload, embed_workflow),
-                                inputs=inputs, tags=tags)
+                                inputs=inputs, tags=tags, dir=dest)
         store.add_candidate(tab, i)
         ids.append(i)
         if progress:
