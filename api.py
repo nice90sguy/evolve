@@ -13,7 +13,6 @@ the store, the job runner, the settings.
 """
 import asyncio
 import mimetypes
-import time
 import re
 import urllib.request
 from pathlib import Path
@@ -526,25 +525,8 @@ ROUTES = {
 }
 
 
-@web.middleware
-async def slow_log(request, handler):
-    """Anything over 30ms lands in <root>/_debug/slow_requests.log - the
-    file to read when the UI feels slow."""
-    t0 = time.perf_counter()
-    resp = await handler(request)
-    dt = (time.perf_counter() - t0) * 1000
-    if dt > 30 and not request.path.startswith("/static"):
-        try:
-            with (comfy_client.DEBUG_DIR / "slow_requests.log").open("a", encoding="utf-8") as f:
-                f.write(f"{time.strftime('%H:%M:%S')} {dt:6.0f}ms "
-                        f"{request.method} {request.path_qs}\n")
-        except OSError:
-            pass
-    return resp
-
-
 def create_app(store, embed_workflow=False):
-    app = web.Application(client_max_size=256 * 1024 ** 2, middlewares=[slow_log])
+    app = web.Application(client_max_size=256 * 1024 ** 2)
     app["ctx"] = App(store, embed_workflow)
     app.router.add_get("/", index)
     app.router.add_get("/static/{path:.+}", serve_static)
