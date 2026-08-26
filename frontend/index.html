@@ -123,14 +123,14 @@
       </div>
       <div id="hsplit" title="drag to resize"></div>
       <div id="output">
-        <div class="ghead"><b>Output</b> <span class="n">0</span> <span>— P keeps; anything unpinned is archived when the next round runs · Shift+Del discards any image now</span></div>
+        <div class="ghead"><b>Output</b> <span class="n">0</span> <span>— P keeps; anything unpinned is thrown away when the next round runs · Shift+Del trashes any image now</span></div>
         <div class="grid" id="sheet"></div>
       </div>
     </div>
   <div id="loras" hidden>
     <div id="dataset">
       <div class="ahead"><b>Dataset</b>
-        <select id="lorasel" title="a LoRA = a name (the trigger word) + its trained files per model; its dataset is every unarchived image carrying the word lora_dataset_&lt;name&gt;"></select>
+        <select id="lorasel" title="a LoRA = a name (the trigger word) + its trained files per model; its dataset is every image (not in the trash) carrying the word lora_dataset_&lt;name&gt;"></select>
         <button id="loranew" title="create a new LoRA (its name is the trigger word)">+ new</button>
         <button id="loradel" title="forget this LoRA (its files stay on disk; images and their words are untouched)">delete</button>
         <button id="lorafolder" title="import every image in a disk folder (recursive, server-side) with this LoRA's dataset word">add folder…</button>
@@ -190,7 +190,7 @@
   <div class="pbox">
     <div class="ptitle"></div>
     <div class="pbody"></div>
-    <label class="pforce"><input type="checkbox" id="pforce"> also archive (and unpin) the pinned images in the branch</label>
+    <label class="pforce"><input type="checkbox" id="pforce"> also trash (and unpin) the pinned images in the branch</label>
     <div class="pbtns"><button id="pcancel">Cancel</button><button id="pgo">Prune</button></div>
   </div>
 </div>

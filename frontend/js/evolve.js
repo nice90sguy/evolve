@@ -121,7 +121,7 @@ function renderWords() {
     });
   const tg = document.createElement('label');
   tg.className = 'chip tog' + (showArchived ? ' on' : '');
-  tg.title = 'show archived images inside the views (browse the trash itself in A mode)';
+  tg.title = 'show trashed images inside the views (browse the trash itself in A mode)';
   tg.innerHTML = `<input type="checkbox" ${showArchived ? 'checked' : ''}> show trashed`;
   tg.querySelector('input').addEventListener('change', e => { showArchived = e.target.checked; localStorage.setItem('view:archived', showArchived ? '1' : '0'); render(); });
   bar.appendChild(tg);
@@ -434,6 +434,7 @@ function renderPlaces() {
       placesKey = ''; renderPlaces();
     });
     n.addEventListener('click', () => { placesView = null; act('cwd', {dir: d}); });
+    n.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showDirInfo(d, e.clientX, e.clientY); });
     n.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); n.classList.add('over'); });
     n.addEventListener('dragleave', () => n.classList.remove('over'));
     n.addEventListener('drop', async e => {
@@ -753,7 +754,7 @@ let pruneId = null, prunePlan = null;
 function pruneText(p) {
   const n = p.archive.length;
   let t = `Branch under #${p.root}: ${p.branch} image${p.branch === 1 ? '' : 's'} (mother-line).` + String.fromCharCode(10);
-  t += `Archive ${n}.`;
+  t += `Trash ${n}.`;
   if (p.keep.length) {
     t += ` Keep ${p.keep.length}:` + String.fromCharCode(10) +
       p.keep.map(k => `   #${k.id} — ${k.why}`).join(String.fromCharCode(10));
@@ -771,7 +772,7 @@ function pruneText(p) {
   if (p.live.refs) live.push(`${p.live.refs} reference slot(s)`);
   if (live.length) t += String.fromCharCode(10) + 'Clears: ' + live.join(', ') + '.';
   if (p.outside_refs) t += String.fromCharCode(10) + `Also referenced by ${p.outside_refs} image(s) outside the branch (not touched).`;
-  if (!n) t += String.fromCharCode(10) + 'Nothing to archive under this plan.';
+  if (!n) t += String.fromCharCode(10) + 'Nothing to trash under this plan.';
   return t;
 }
 async function openPrune(id, plan) {
@@ -798,7 +799,7 @@ $('#pgo').addEventListener('click', async () => {
   const r = await api('prune', {id: pruneId, force: $('#pforce').checked, apply: true});
   closePrune();
   if (r.error) notice(r.error);
-  else flash(`pruned: ${r.archive.length} archived`);
+  else flash(`pruned: ${r.archive.length} trashed`);
   refresh();
 });
 
@@ -1564,8 +1565,8 @@ function archivedEditor(m) {
   const kk = document.createElement('span'); kk.className = 'iw-k'; kk.textContent = 'state';
   const lab = document.createElement('label'); lab.className = 'iw-casc';
   const pinned = (m.tags || []).includes('pinned');
-  lab.innerHTML = `<input type="checkbox" ${m.archived ? 'checked' : ''}> archived` +
-    (pinned && !m.archived ? ' <span class="hint">(pinned — archiving unpins)</span>' : '');
+  lab.innerHTML = `<input type="checkbox" ${m.archived ? 'checked' : ''}> in the trash` +
+    (pinned && !m.archived ? ' <span class="hint">(pinned — trashing unpins)</span>' : '');
   lab.querySelector('input').addEventListener('change', async e => {
     const r = await api('archive', {id: m.id, on: e.target.checked, force: true});
     if (r.error) notice(r.error);
@@ -1586,6 +1587,62 @@ function descEditor(m) {
   ta.addEventListener('change', () => api('describe', {id: m.id, description: ta.value}).then(refresh));
   row.append(kk, ta);
   return row;
+}
+// ---- Folder Info: the tag editor over a SET (every image in a folder) ----
+// "apply to subfolders" walks the DIRECTORY tree (not lineage - that is
+// the image editor's "apply to descendants"). Words added here are
+// one-shot: images born into the folder later do not inherit them.
+let dirSub = localStorage.getItem('dir:sub') !== '0';
+async function showDirInfo(dir, x, y) {
+  const info = await api('dir_info', {dir});
+  if (info.error) { notice(info.error); return; }
+  if (!infoEl) {
+    infoEl = document.createElement('div');
+    infoEl.id = 'infowin';
+    document.body.appendChild(infoEl);
+    document.addEventListener('mousedown', e => { if (!infoEl.hidden && !infoEl.contains(e.target)) infoHide(); });
+  }
+  infoEl.innerHTML = '';
+  const scope = () => dirSub ? info.direct.concat(info.below) : info.direct;
+  const row = (k, node) => {
+    const r = document.createElement('div'); r.className = 'iw-row';
+    const kk = document.createElement('span'); kk.className = 'iw-k'; kk.textContent = k;
+    r.append(kk, node); infoEl.appendChild(r); return r;
+  };
+  const txt = s => { const v = document.createElement('span'); v.className = 'iw-v'; v.textContent = s; return v; };
+  row('folder', txt(dir));
+  row('images', txt(`${info.direct.length} here` + (info.below.length ? `, ${info.below.length} in subfolders` : '')));
+  const apply = (add, remove) => {
+    const ids = scope();
+    if (!ids.length) { flash('no images in scope'); return Promise.resolve(); }
+    return api('tag', {ids, add, remove, cascade: false})
+      .then(r => { if (r.error) notice(r.error); else flash(`${add.length ? '+' + add.join(',') : ''}${remove.length ? ' -' + remove.join(',') : ''} on ${r.touched.length} image(s)`); return refresh(); })
+      .then(() => showDirInfo(dir, x, y));
+  };
+  const box = document.createElement('div'); box.className = 'iw-tags';
+  Object.entries(info.words).sort((a, b) => a[0].localeCompare(b[0])).forEach(([w, n]) => {
+    const c = document.createElement('span'); c.className = 'chip';
+    c.innerHTML = `${w} <span class="cnt">${n}</span><span class="x" title="remove this word from every image in scope">×</span>`;
+    c.querySelector('.x').addEventListener('click', () => apply([], [w]));
+    box.appendChild(c);
+  });
+  const inp = document.createElement('input'); inp.className = 'iw-tagin'; inp.placeholder = 'add word to all…';
+  inp.setAttribute('list', 'wordlist');
+  let dl = $('#wordlist');
+  if (!dl) { dl = document.createElement('datalist'); dl.id = 'wordlist'; document.body.appendChild(dl); }
+  dl.innerHTML = Object.keys(S.words || {}).sort().map(w => `<option value="${w}">`).join('');
+  const submit = () => { const v = inp.value; inp.value = ''; if (v.trim()) apply(v.split(','), []); };
+  inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') submit(); });
+  inp.addEventListener('change', submit);
+  const sub = document.createElement('label'); sub.className = 'iw-casc';
+  sub.innerHTML = `<input type="checkbox" ${dirSub ? 'checked' : ''}> apply to subfolders`;
+  sub.querySelector('input').addEventListener('change', e => { dirSub = e.target.checked; localStorage.setItem('dir:sub', dirSub ? '1' : '0'); });
+  box.append(inp, sub);
+  row('words', box);
+  infoEl.hidden = false;
+  const r = infoEl.getBoundingClientRect();
+  infoEl.style.left = Math.min(x, innerWidth - r.width - 12) + 'px';
+  infoEl.style.top = Math.min(y, innerHeight - r.height - 12) + 'px';
 }
 document.addEventListener('contextmenu', e => {
   const d = e.target.closest('[data-id]');

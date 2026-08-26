@@ -758,7 +758,23 @@ behaviour they record is unchanged (builders verified byte-identical).
   same features), `api_to_ui.py`, README with the manual curl-level steps,
   and the original experiment payloads.
 
-## Missing files & ghost folders — BUILT 2026-08-26 (after the Shift+Del incident)
+## Folder Info — BUILT 2026-08-26 (the tag editor over a SET)
+
+Right-click a folder node in A mode -> Folder Info popup: path, image
+counts (here / in subfolders), the words present with counts, add/remove
+words for EVERY image in scope, checkbox "apply to subfolders" (walks the
+DIRECTORY tree - not lineage; the image editor's "apply to descendants"
+walks lineage). `/api/dir_info {dir}` -> {direct, below, words}; tagging
+goes through the existing `/api/tag {ids}` (cascade off). This is how a
+folder becomes a LoRA dataset ("add folder..." on the LoRA page is import
+-only and would DUPLICATE converted images whose record sha1 is the
+ORIGINAL bytes' - do not use it on in-root folders). Words are one-shot:
+images born into the folder later do not inherit them - per-folder
+default tags are the planned bridge. Also planned (agreed): LoRA dataset
+words chip'd at zero members, drop-into-single-word-view, folder nodes as
+drag sources. User-facing vocabulary audited: throw away / trash (v./n.)
+/ trashed - never "archive"; internal identifiers keep `archive`.
+
 
 The user Shift+Deleted the whole images/ tree in Explorer (meaning to
 delete an imported game subfolder). Recovery script (scratchpad, one-off)

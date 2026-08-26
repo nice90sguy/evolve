@@ -137,6 +137,10 @@ def main():
         s, r = post("/api/controls", {"prompt": "saved", "bogus": 1})
         snap = state()
         assert snap["controls"]["prompt"] == "saved" and "bogus" not in snap["controls"]
+        s, r = post("/api/dir_info", {"dir": "images"})
+        assert s == 200 and r["direct"] == [A] and r["words"].get("lora_dataset_julie") == 1, r
+        s, r = post("/api/dir_info", {"dir": "../x"})
+        assert s == 400
         s, r = post("/api/pov", {"elev": "low"})
         assert s == 400 and "working" in r["error"]
         s, r = post("/api/abort", {})

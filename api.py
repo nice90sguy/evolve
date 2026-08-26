@@ -262,6 +262,30 @@ async def handle_cwd(request):
     return ok()
 
 
+async def handle_dir_info(request):
+    """{dir}: the images in a folder (direct and with subfolders) and the
+    words they carry - the Folder Info popup's data."""
+    from store import valid_dir
+    store = ctx(request).store
+    b = await request.json()
+    d = valid_dir(b.get("dir") or "")
+    if d is None:
+        return error(f"bad folder {b.get('dir')!r}")
+    with store.lock:
+        direct, below = [], []
+        for i in store.alive_ids():
+            di = store.image_dir(i)
+            if di == d:
+                direct.append(i)
+            elif di.startswith(d + "/"):
+                below.append(i)
+        words = {}
+        for i in direct + below:
+            for w in store.tags(i):
+                words[w] = words.get(w, 0) + 1
+        return ok(dir=d, direct=direct, below=below, words=words)
+
+
 async def handle_check(request):
     """Stat every known file (cheap; no walk): refresh the missing set."""
     return ok(missing=ctx(request).store.check_files())
@@ -542,7 +566,7 @@ ROUTES = {
     "place": handle_place, "clear": handle_clear, "pin": handle_pin, "slots": handle_slots,
     "tag": handle_tag, "describe": handle_describe, "archive": handle_archive,
     "cwd": handle_cwd, "move": handle_move, "mkdir": handle_mkdir, "rescan": handle_rescan,
-    "check": handle_check, "forget_missing": handle_forget_missing,
+    "check": handle_check, "forget_missing": handle_forget_missing, "dir_info": handle_dir_info,
     "winav": handle_winav,
     "generate": handle_generate, "pov": handle_pov, "abort": handle_abort,
     "family": handle_family, "meta": handle_meta, "discard": handle_discard,

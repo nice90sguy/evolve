@@ -75,7 +75,7 @@ def prune_apply(store, root_id, force=False):
         store.archive(plan["archive"], force=force)
         store.forget(plan["archive"])
         store.save_state()
-        print(f"pruned #{root_id}: {len(plan['archive'])} archived"
+        print(f"pruned #{root_id}: {len(plan['archive'])} trashed"
               + (f", {len(plan['unpin'])} unpinned" if plan["unpin"] else ""))
         return plan
 
