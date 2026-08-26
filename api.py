@@ -201,8 +201,8 @@ async def handle_pin(request):
 
 async def handle_slots(request):
     b = await request.json()
-    ctx(request).store.set_slots(b["slots"])
-    return ok()
+    gone = ctx(request).store.set_slots(b["slots"], b.get("tab"))
+    return ok(trashed=gone)
 
 
 # ---------- tags & descriptions ----------

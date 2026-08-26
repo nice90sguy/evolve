@@ -56,6 +56,10 @@ def main():
                          "(pre-Places layout): run  python tools/migrate_projects.py "
                          f"--root {root} --places  first")
     import threading
+    from trash import sweep_orphans
+    orphans = sweep_orphans(store)       # fresh images listed in no Output -> trash
+    if orphans:
+        print(f"threw away {len(orphans)} orphaned fresh image(s): {orphans}")
 
     def startup_rescan():
         def bar(done, total, phase):

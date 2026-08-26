@@ -103,9 +103,26 @@ def test_trash_ops():
         st.state["candidates"]["derive"] = [k2, X]
         st.state["working"] = X
         assert trash.sweep(st, "derive") == 0                      # nothing fresh: nothing thrown away
+        # INVARIANT: fresh => listed in some Output. Shrinking the count
+        # throws away the fresh tail; an orphan (listed nowhere) dies at
+        # startup / the next sweep - never lingers in a folder.
+        g1 = st.add_image(IM, "gen", recipe={"prompt": "g", "seed": 1}, parents=[X], fresh=True)
+        g2 = st.add_image(IM, "gen", recipe={"prompt": "g", "seed": 2}, parents=[X], fresh=True)
+        g3 = st.add_image(IM, "gen", recipe={"prompt": "g", "seed": 3}, parents=[X], fresh=True)
+        st.state["candidates"]["create"] = [g1, g2]
+        assert st.set_slots(1, "create") == [g2] and st.is_archived(g2) and not st.is_archived(g1)
+        assert st.state["candidates"]["create"] == [g1]
+        assert st.orphan_fresh() == [g3]
+        assert trash.sweep_orphans(st) == [g3] and st.is_archived(g3)
+        assert st.orphan_fresh() == []
+        st.set_slots(6, "create")
+        st.add_candidate("create", X); st.add_candidate("create", k)
+        assert len(st.cands("create")) == 3                        # no silent cap on landing
+        st.state["candidates"]["create"] = []
+        st.archive([g1])
         st.archive([k2])
         plan = trash.prune_plan(st, X)
-        assert plan["archive"] == [X] and plan["keep"] == [{"id": k, "why": "pinned"}] and plan["already"] == 4   # k2, f1, f2, f3
+        assert plan["archive"] == [X] and plan["keep"] == [{"id": k, "why": "pinned"}] and plan["already"] == 7   # k2, f1, f2, f3, g1, g2, g3
         plan = trash.prune_apply(st, X, force=True)
         assert sorted(plan["archive"]) == [X, k] and plan["unpin"] == [k]
         assert st.is_archived(k) and not st.has(k, PINNED) and st.state["working"] is None

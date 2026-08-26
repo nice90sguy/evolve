@@ -861,11 +861,32 @@ class Store:
             else:
                 self.tag([i], remove=[PINNED])
 
-    def set_slots(self, n):
+    def set_slots(self, n, tab=None):
+        """The Output count of `tab` (default: the active tab). Candidates
+        that fall off the end are not merely dropped: the FRESH ones are
+        thrown away (a fresh image exists only as an output; off the sheet
+        it is trash), touched ones are just displaced. Returns the ids
+        thrown away."""
         with self.lock:
             self.state["slots"] = max(1, min(64, int(n)))
-            del self.cands()[self.state["slots"]:]
+            lst = self.cands(tab)
+            cut = lst[self.state["slots"]:]
+            del lst[self.state["slots"]:]
+            doomed = [q for q in cut if self.is_fresh(q) and not self.is_archived(q)]
+            if doomed:
+                self.archive(doomed)
+                self.forget(doomed)
             self.save_state()
+            return doomed
+
+    def orphan_fresh(self):
+        """INVARIANT: a fresh image is in some tab's Output list. Any fresh
+        image that is not (a truncated list, an aborted round, a crash
+        between landing and listing) is an orphan and must be thrown away
+        quietly - it exists nowhere the user can see it."""
+        listed = {q for lst in self.state["candidates"].values() for q in lst}
+        return [i for i in self.alive_ids()
+                if self.is_fresh(i) and not self.is_archived(i) and i not in listed]
 
     def begin_round(self, tab):
         with self.lock:
@@ -874,10 +895,10 @@ class Store:
             return self.state["slots"]
 
     def add_candidate(self, tab, i):
+        # no cap: a round lists EVERY image it lands (the cap used to drop
+        # the tail silently when the count changed mid-round -> orphans)
         with self.lock:
-            lst = self.state["candidates"][tab]
-            if len(lst) < self.state["slots"]:
-                lst.append(i)
+            self.state["candidates"][tab].append(i)
             self.save_state()
 
     def note_round(self, base_seed, used_lora):

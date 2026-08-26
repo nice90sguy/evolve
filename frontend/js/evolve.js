@@ -93,7 +93,7 @@ let archivedSet = new Set();
 const carShow = k => localStorage.getItem('show:' + k) !== '0';
 function viewIds() {
   if (!S || !curWord) return [];
-  const ids = (S.all_ids || []).filter(id => (S.tags[id] || []).includes(curWord));
+  const ids = (S.all_ids || []).filter(id => (S.tags[id] || []).includes(curWord) && !isFresh(id));
   return showArchived ? ids : ids.filter(id => !isArchived(id));
 }
 function renderWords() {
@@ -103,6 +103,7 @@ function renderWords() {
   const counts = {};
   (S.all_ids || []).forEach(id => {
     if (!showArchived && isArchived(id)) return;
+    if (isFresh(id)) return;
     (S.tags[id] || []).forEach(w => { counts[w] = (counts[w] || 0) + 1; });
   });
   if (curWord && !(curWord in (S.words || {}))) curWord = '';
@@ -146,8 +147,8 @@ const LISTS = {
   pin:   () => S.pins,
   all:   () => viewIds(),
   gpar:  () => famData && famData.parents.map(x => x.id),
-  gsib:  () => famData && famData.siblings.map(x => x.id),
-  gkid:  () => famData && famData.children.map(x => x.id),
+  gsib:  () => famData && famData.siblings.map(x => x.id).filter(id => !isFresh(id)),
+  gkid:  () => famData && famData.children.map(x => x.id).filter(id => !isFresh(id)),
   grid:  () => (gridName && gridName !== 'grid') ? listFor(gridName) : null,
   lora:  () => { const x = curLora(); return x ? datasetIds(x) : null; },
   // NOT mode-gated: a selection made in A keeps its identity when the pane
@@ -413,17 +414,20 @@ async function revealInPlaces() {
   if (t) t.scrollIntoView({block: 'nearest'});
 }
 let placesView = null;   // null = the cwd; '#missing' = the missing pseudo-folder
+// A fresh image (untouched output) exists ONLY in its Output grid: every
+// other list - folders, views, family - hides it until something touches it
+const isFresh = id => !!S && (S.fresh || []).includes(id);
 function placesIds() {
   if (placesView === '#missing') return S.missing || [];
   const cwd = S.cwd;
-  return (S.all_ids || []).filter(id => S.paths[id] === cwd);
+  return (S.all_ids || []).filter(id => S.paths[id] === cwd && !isFresh(id));
 }
 let placesKey = '';
 let folded = new Set(JSON.parse(localStorage.getItem('tree:folded') || '[]'));
 function renderPlaces() {
   if (mode !== 'assets' || !S) return;
   const counts = {};
-  Object.values(S.paths || {}).forEach(d => { counts[d] = (counts[d] || 0) + 1; });
+  Object.entries(S.paths || {}).forEach(([id, d]) => { if (!isFresh(+id)) counts[d] = (counts[d] || 0) + 1; });
   // the open folder's ancestors are never folded (reveal must be visible)
   S.cwd.split('/').slice(0, -1).reduce((acc, seg) => { const p2 = acc ? acc + '/' + seg : seg; folded.delete(p2); return p2; }, '');
   if (placesView === '#missing' && !(S.missing || []).length) placesView = null;
@@ -834,9 +838,9 @@ function setTab(t, user) {
   if (S) {
     familyUI(); genUI(); renderSlots();   // the grid shows THIS tab's outputs
     if (user) {   // the Output grid previews the ACTIVE tab's outputs count
-      const o = $('#outputs_' + t);
-      if (o) act('slots', {slots: +o.value || 1});
       saveControls();
+      const o = $('#outputs_' + t);
+      if (o) act('slots', {slots: +o.value || 1, tab: t});
       // USER-switch to Derive with an empty ref0: seed it from the WI
       // (w/h follow, like the Space-click gesture). Occupied ref0 is never
       // touched - a pick's restored parent outranks the WI. Del + return
@@ -1272,7 +1276,7 @@ function familyUI() {
 $('#family').addEventListener('change', () => { $('#steps').value = ''; $('#cfg').value = ''; fillLoras(''); familyUI(); saveControls(); });
 $('#sizeref0').addEventListener('change', () => { sizeUI(); saveControls(); });
 ['create', 'derive', 'camera'].forEach(t => $('#outputs_' + t).addEventListener('change', () => {
-  if (activeTab() === t) act('slots', {slots: +$('#outputs_' + t).value || 1});
+  if (activeTab() === t) act('slots', {slots: +$('#outputs_' + t).value || 1, tab: t});
 }));
 $('#gen').addEventListener('click', async () => {
   if (S && S.busy) {          // morphed: Stop

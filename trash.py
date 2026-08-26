@@ -27,16 +27,30 @@ def discard(store, i):
 def sweep(store, tab):
     """Before a round: that tab's candidates still FRESH (spawned and never
     touched since) are thrown away. Touching anything - making it the WI,
-    referencing, pinning, tagging, moving... - is the keep decision."""
+    referencing, pinning, tagging, moving... - is the keep decision.
+    Orphaned fresh images (see Store.orphan_fresh) go with them."""
     with store.lock:
         doomed = [q for q in store.state["candidates"].get(tab, [])
                   if store.is_fresh(q) and not store.is_archived(q)]
+        doomed += store.orphan_fresh()
         if doomed:
             store.archive(doomed)
             store.forget(doomed)
             store.save_state()
             print(f"swept {len(doomed)} unkept candidate(s) from {tab}")
         return len(doomed)
+
+
+def sweep_orphans(store):
+    """Enforce the invariant at startup: fresh images listed in no tab's
+    Output are thrown away quietly (journaled as a move to the trash)."""
+    with store.lock:
+        doomed = store.orphan_fresh()
+        if doomed:
+            store.archive(doomed)
+            store.forget(doomed)
+            store.save_state()
+        return doomed
 
 
 def prune_plan(store, root_id, force=False):
