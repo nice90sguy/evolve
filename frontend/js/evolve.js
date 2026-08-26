@@ -276,6 +276,9 @@ function thumb(id, cls) {
   im.src = imgURL(id); im.dataset.id = id; im.draggable = true; im.className = cls || '';
   im.loading = 'lazy';
   im.title = tip(id);
+  // recompute on hover: memoized strips keep their DOM across polls, so a
+  // baked title goes stale (a moved image kept showing its old path)
+  im.addEventListener('mouseenter', () => { im.title = tip(id); });
   im.addEventListener('dragstart', e => dragStart(e, id));
   return im;
 }
