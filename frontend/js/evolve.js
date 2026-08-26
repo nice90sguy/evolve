@@ -90,7 +90,18 @@ function viewIds() {
 function renderWords() {
   archivedSet = new Set(S.archived || []);
   const bar = $('#wordbar');
-  const words = Object.entries(S.words || {}).sort((a, b) => a[0].localeCompare(b[0]));
+  // chip counts match what CLICKING the chip will show: archived images
+  // count only when the toggle lets them through (was: server-side counts
+  // over everything - "12" on a chip whose view showed 6, user-caught)
+  const counts = {};
+  let allN = 0;
+  (S.all_ids || []).forEach(id => {
+    if (!showArchived && isArchived(id)) return;
+    allN++;
+    (S.tags[id] || []).forEach(w => { counts[w] = (counts[w] || 0) + 1; });
+  });
+  const words = Object.keys(S.words || {}).sort((a, b) => a.localeCompare(b))
+    .map(w => [w, counts[w] || 0]);
   if (curWord !== '*' && curWord !== '#trash' && !(curWord in (S.words || {}))) curWord = '*';
   bar.innerHTML = '';
   const chip = (w, n, label, cls) => {
@@ -101,7 +112,7 @@ function renderWords() {
     c.addEventListener('click', () => { curWord = w; localStorage.setItem('view:word', w); render(); });
     bar.appendChild(c);
   };
-  chip('*', (S.all_ids || []).length, 'all');
+  chip('*', allN, 'all');
   words.forEach(([w, n]) => chip(w, n));
   chip('#trash', (S.archived || []).length, 'trash', 'arch');
   const tg = document.createElement('label');
