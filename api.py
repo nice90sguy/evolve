@@ -89,7 +89,10 @@ def id_list(b):
 # ---------- pages & files ----------
 
 async def index(request):
-    return web.FileResponse(FRONTEND_DIR / "index.html",
+    """?classic=1 serves the pre-shell layout (an escape hatch while the
+    task-rail shell is on trial)."""
+    page = "classic.html" if request.query.get("classic") else "index.html"
+    return web.FileResponse(FRONTEND_DIR / page,
                             headers={"Cache-Control": "no-store"})
 
 

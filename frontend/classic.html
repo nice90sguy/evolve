@@ -1,30 +1,21 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <title>Evolver</title>
-<link rel="stylesheet" href="/static/css/evolve.css">
+<link rel="stylesheet" href="/static/css/classic.css">
 </head><body>
 <div id="app">
-<div id="ctxbar" title="context: your current work focus — tags/views and global filters live here">
+<nav>
+  <a id="nav-evolver" class="on">Evolver</a><a id="nav-loras">LoRAs</a>
+  <div class="spacer"></div>
   <span id="rootname" class="hint" title="the store root"></span>
-  <div id="wordbar" title="views: every word is a view — click a word to see its images"></div>
-  <span class="spacer"></span>
-  <label title="words put on every image the app makes or imports (comma-separated); bred images also copy their mother's words">default tags <input type="text" id="deftags" placeholder="softlock, (c) 2026 Josh" style="width:200px"></label>
-</div>
-<div id="mainrow">
-  <div id="rail">
-    <a class="tab on" data-mode="evolver" title="Evolve — breed images (E)">E</a>
-    <a class="tab" data-mode="loras" title="LoRAs — datasets &amp; training (L)">L</a>
-    <a class="tab" data-mode="assets" title="Asset manager — the directory tree (A) · needs the Places build">A</a>
-    <a class="tab" data-mode="story" title="Story — keyframes, dialog, tweens (S) · not built">S</a>
-    <span class="spacer"></span>
-    <a class="tab gear" title="settings — later">⚙</a>
-  </div>
-  <main>
+</nav>
+<main>
   <div id="top">
     <details class="car" id="car-hist" open><summary><b>History</b> <span class="n">0</span> — images bred from: the ref0 of each Generate, the source of each POV; newest first</summary>
       <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
     <details class="car drop" id="car-pin" data-target="pin" data-index="999"><summary><b>Pinned</b> <span class="n">0</span> — the word <i>pinned</i>: P pins the selection; Del here unpins; drop / paste to pin</summary>
       <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
+    <div id="wordbar" title="views: every word is a view — click a word to see its images (all of them, archived included)"></div>
     <details class="car" id="car-all"><summary><b id="viewname">All</b> <span class="n">0</span> — <span id="viewhint">every image, by number</span></summary>
       <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
     <details id="genea"><summary><b>Genealogy</b> — of the Working Image</summary>
@@ -135,24 +126,21 @@
     </div>
     <div id="lgrid" class="drop" data-target="lgrid" data-index="0" tabindex="0" title="click to focus, then Ctrl-V pastes a clipboard image straight into this dataset"></div>
   </div>
-  <div id="page-assets" class="stub" hidden>Asset manager — the directory tree of app-tracked images (the Places build). Coming next.</div>
-  <div id="page-story" class="stub" hidden>Story — keyframes, dialog, transitions, tweens, decision points. Later.</div>
   </div>
-  </main>
-</div>
-<div id="bottom">
+  <div id="bottom">
     <span class="lab">session</span>
     <label>w <input type="number" id="width" step="16" value="1024"></label>
     <label>h <input type="number" id="height" step="16" value="1024"></label>
     <label title="reload pristine model weights before every round (~15-30s); otherwise only after a round that used a LoRA (ComfyUI #11021)"><input type="checkbox" id="fresh"> reload model on Generate</label>
+    <label title="words put on every image the app makes or imports (comma-separated); bred images also copy their mother's words">default tags <input type="text" id="deftags" placeholder="softlock, (c) 2026 Josh" style="width:200px"></label>
     <button id="gc" title="PURGE: permanently delete the files of archived images that no unarchived image descends from">Purge archived</button>
     <span id="msg"></span>
     <span class="spacer"></span>
     <span id="progwrap"><progress id="prog" max="1" value="0"></progress> <span id="progtxt"></span></span>
     <span class="svc" title="ComfyUI at 127.0.0.1:8188">ComfyUI <i id="comfy-dot" class="dot"></i></span>
     <span class="svc" title="this evolve server">evolve <i id="evolve-dot" class="dot"></i></span>
-</div>
-</div>
+  </div>
+</main>
 <div id="toasts"></div>
 <div id="prunedlg" hidden>
   <div class="pbox">
@@ -172,5 +160,5 @@
   <div id="gridpeek" hidden><img alt=""></div>
 </div>
 </div>
-<script src="/static/js/evolve.js"></script>
+<script src="/static/js/classic.js"></script>
 </body></html>

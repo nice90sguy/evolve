@@ -800,6 +800,20 @@ here"). Three orthogonal axes, never overlapping:
   unaffected; tags/views/editor untouched; LoRA page = dataset view +
   Make LoRA; migration puts the current 29 flat images somewhere sensible
   (e.g. `imports/` or by their current words) - trivial at this size.
+- **Shell BUILT 2026-08-26 (first pass, per the WireFrame.pdf mock in
+  docs/):** context bar (top: root name, the word bar - user pushback:
+  the tag slugs DO belong in context - and default tags), skinny task
+  RAIL on the left styled as connected tabs (active letter's right border
+  opens into the desktop), status bar full-width bottom. Modes: E =
+  evolve (today's workspace), L = LoRAs page, A / S = stubs; keys
+  E/L/A/S switch modes (Blender-style); `lastSelId` survives switches
+  (for the coming verbs-on-selection). Escape hatch: `/?classic=1`
+  serves the pre-shell layout (frontend/classic.{html,js,css} snapshot) -
+  delete those three files + the api.index branch when the shell is
+  accepted. Parked by explicit decision: context-bar working-set,
+  dataset-as-document (build when SCENES force reference-with-payload;
+  datasets migrate mechanically), S-mode, Gen panel refinement, L-entry
+  polish (browse-vs-enter: single-click browses, explicit act enters).
 - **UI direction for the build (user's hint, 2026-08-25 evening; a mock
   follows after they have played with the app):** menu bar at the top
   (they'd prefer left on a widescreen), directory tree on the LEFT. The

@@ -31,7 +31,6 @@ const Sel = (() => {
     const e0 = el();
     if (e0) { e0.classList.add('focus'); if (e0.tagName === 'IMG') e0.scrollIntoView({inline: 'nearest', block: 'nearest'}); }
     const i = id();
-    if (i != null) lastSelId = i;
     if (i != null) {    // SELECTED_ALIAS: every other Image showing the same underlying image.
       // Style the enclosing [data-target] box, not the bare img: an img that
       // doesn't fill its container would otherwise show its own outline
@@ -54,7 +53,6 @@ const Sel = (() => {
 })();
 // where imports land when nothing is selected
 const selTarget = () => Sel.target === 'none' ? {target: 'working', index: 0} : Sel.get();
-let lastSelId = null;         // the last selected image id, app-global (mode switches keep it)
 let pollTimer = null;
 
 const api = (path, body) => fetch('/api/' + path, body === undefined ? {} :
@@ -329,25 +327,19 @@ function render() {
 
 // ---------- LoRA editor: images grouped by a LoRA's dataset word, with
 // descriptions; remove the word, train the LoRA ----------
-// ---- the task rail: modes (Blender-style: one key each) ----
-const MODES = ['evolver', 'loras', 'assets', 'story'];
-const MODE_KEYS = {e: 'evolver', l: 'loras', a: 'assets', s: 'story'};
 let mode = localStorage.getItem('mode') || 'evolver';
 let curLoraName = localStorage.getItem('lora:last') || null;
 function setMode(m) {
-  mode = MODES.includes(m) ? m : 'evolver';
-  localStorage.setItem('mode', mode);
-  document.querySelectorAll('#rail .tab[data-mode]').forEach(t =>
-    t.classList.toggle('on', t.dataset.mode === mode));
-  ['#stage', '#split', '#genpanel'].forEach(sel => { $(sel).style.display = mode === 'evolver' ? '' : 'none'; });
-  $('#loras').hidden = mode !== 'loras';
-  $('#page-assets').hidden = mode !== 'assets';
-  $('#page-story').hidden = mode !== 'story';
-  $('#top').style.display = (mode === 'evolver' || mode === 'loras') ? '' : 'none';
+  mode = m;
+  localStorage.setItem('mode', m);
+  $('#nav-evolver').classList.toggle('on', m === 'evolver');
+  $('#nav-loras').classList.toggle('on', m === 'loras');
+  $('#genpanel').style.display = m === 'loras' ? 'none' : '';
+  $('#loras').hidden = m !== 'loras';
   if (S) render();
 }
-document.querySelectorAll('#rail .tab[data-mode]').forEach(t =>
-  t.addEventListener('click', () => setMode(t.dataset.mode)));
+$('#nav-evolver').addEventListener('click', () => setMode('evolver'));
+$('#nav-loras').addEventListener('click', () => setMode('loras'));
 
 function curLora() {
   return (S.loras || []).find(x => x.name === curLoraName) || (S.loras || [])[0] || null;
@@ -1146,8 +1138,6 @@ document.addEventListener('keydown', async e => {
     else if (listFor(Sel.target) && Math.abs(d) === 1) { e.preventDefault(); Sel.set(Sel.target, Math.max(0, Math.min(listFor(Sel.target).length - 1, Sel.index + d))); }
   } else if (e.key === 'p' && id != null) {
     act('pin', {id, on: true});   // P pins the selection from ANYWHERE; Del inside Pinned unpins
-  } else if (!e.ctrlKey && !e.metaKey && !e.altKey && !gridOn && MODE_KEYS[e.key.toLowerCase()]) {
-    setMode(MODE_KEYS[e.key.toLowerCase()]);   // Blender-style: E/L/A/S switch modes
   }
 });
 

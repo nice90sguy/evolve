@@ -1,21 +1,17 @@
 :root{--bg:#1b1b1f;--panel:#242429;--line:#3a3a42;--fg:#ddd;--dim:#888;--acc:#ffd04a;--focus:#5ab0ff}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:13px system-ui,sans-serif;overflow:hidden}
-#app{display:grid;grid-template-rows:auto 1fr auto;height:100%}
-/* ---- the shell: context bar / task rail / desktop / status (2026-08-26) ---- */
-#ctxbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:3px 10px;background:var(--panel);border-bottom:1px solid var(--line);font-size:12px;color:var(--dim)}
-#ctxbar .spacer{flex:1}
-#ctxbar label{display:flex;gap:5px;align-items:center;white-space:nowrap}
-#mainrow{display:flex;min-height:0}
-#rail{width:30px;flex:none;background:#101013;border-right:1px solid var(--line);display:flex;flex-direction:column;padding-top:8px;user-select:none}
-#rail .spacer{flex:1}
-#rail .tab{position:relative;z-index:1;text-align:center;padding:9px 0;color:var(--dim);cursor:pointer;font-weight:600;font-size:14px}
-#rail .tab:hover{color:var(--fg)}
-#rail .tab.on{color:var(--fg);background:var(--bg);border:1px solid var(--line);border-right:none;margin-right:-1px;border-radius:5px 0 0 5px}
-#rail .tab.gear{font-weight:400;padding-bottom:10px;opacity:.7}
-main{flex:1;display:grid;grid-template-rows:auto 1fr;min-width:0;min-height:0}
-.stub{grid-column:1 / -1;grid-row:1;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:14px;background:var(--bg);text-align:center;padding:20px}
-.stub[hidden]{display:none}
+#app{display:grid;grid-template-columns:150px 1fr;height:100%}
+nav{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:8px 0}
+nav a{padding:7px 14px;color:var(--dim);text-decoration:none;cursor:default}
+nav a.on{color:var(--fg);background:#2e2e36;border-left:3px solid var(--acc)}
+nav .spacer{flex:1}
+#proj{display:flex;gap:4px;padding:4px 8px 10px;border-bottom:1px solid var(--line);margin-bottom:6px}
+#proj select{flex:1;min-width:0;background:#111;color:var(--fg);border:1px solid var(--line);padding:3px}
+#proj .sw{width:11px;height:11px;border-radius:50%;flex:none;align-self:center;border:1px solid rgba(255,255,255,.25)}
+#proj button{background:#333;color:var(--fg);border:1px solid var(--line);cursor:pointer;padding:0 8px}
+nav button{margin:6px 10px;background:#333;color:var(--fg);border:1px solid var(--line);padding:5px;cursor:pointer}
+main{display:grid;grid-template-rows:auto 1fr auto;height:100vh;min-width:0}
 #top{border-bottom:1px solid var(--line);min-width:0}
 .car{padding:2px 10px;min-width:0;max-width:100%}
 .car summary{cursor:pointer;color:var(--dim);font-size:12px;user-select:none;padding:3px 6px;display:flex;align-items:center;gap:6px}
