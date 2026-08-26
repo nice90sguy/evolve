@@ -71,6 +71,7 @@ package on `sys.path`):
 | `tween.py` | two keyframes -> video via Wan 2.2 FLF2V (two-expert handoff) |
 | `watch.py` | attach a progress bar to a run already in flight |
 | `migrate_projects.py` | pre-tags root → one tagged store; `--scan` absorbs alien images |
+| `recover.py` | restore store files deleted outside the app from the copies evolve keeps (staged links, `_train`, `_migrated`, scratch renders); `--apply` writes |
 | `depth_warp.py`, `quantize_te_fp8.py` | parked spikes |
 
 `tests/` - `python tests/test_store.py` (store/trash/lineage/controls),
