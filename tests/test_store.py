@@ -131,7 +131,7 @@ def test_trash_ops():
         st.restore([A]); st.pin(A, True)
         assert trash.discard(st, A).startswith("kept: pinned")
         st.pin(A, False); st.archive([A])
-        assert trash.empty_trash(st, apply=True)["removed"] == 7
+        assert trash.empty_trash(st, apply=True)["removed"] == 10   # + g1, g2, g3
         assert trash.discard(st, A) == "not found"
         print("trash ops ok")
     finally:
