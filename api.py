@@ -536,8 +536,8 @@ async def slow_log(request, handler):
     if dt > 30 and not request.path.startswith("/static"):
         try:
             with (comfy_client.DEBUG_DIR / "slow_requests.log").open("a", encoding="utf-8") as f:
-                f.write(f"{time.strftime('%H:%M:%S')} {dt:6.0f}ms {request.method} {request.path_qs}
-")
+                f.write(f"{time.strftime('%H:%M:%S')} {dt:6.0f}ms "
+                        f"{request.method} {request.path_qs}\n")
         except OSError:
             pass
     return resp
