@@ -252,11 +252,26 @@ async def handle_winav(request):
 
 
 async def handle_cwd(request):
-    """Set the working folder (created if missing). Fiat images land here."""
+    """Set the working folder (created if missing). Fiat images land here.
+    Also a stat pass, so Explorer deletions show up on the next render."""
+    store = ctx(request).store
     b = await request.json()
-    if not ctx(request).store.set_cwd(b.get("dir") or ""):
+    if not store.set_cwd(b.get("dir") or ""):
         return error(f"bad folder {b.get('dir')!r}")
+    store.check_files()
     return ok()
+
+
+async def handle_check(request):
+    """Stat every known file (cheap; no walk): refresh the missing set."""
+    return ok(missing=ctx(request).store.check_files())
+
+
+async def handle_forget_missing(request):
+    """{ids?}: tombstone missing records (all of them by default)."""
+    b = await request.json()
+    ids = b.get("ids")
+    return ok(forgotten=ctx(request).store.forget_missing(ids))
 
 
 async def handle_move(request):
@@ -527,6 +542,7 @@ ROUTES = {
     "place": handle_place, "clear": handle_clear, "pin": handle_pin, "slots": handle_slots,
     "tag": handle_tag, "describe": handle_describe, "archive": handle_archive,
     "cwd": handle_cwd, "move": handle_move, "mkdir": handle_mkdir, "rescan": handle_rescan,
+    "check": handle_check, "forget_missing": handle_forget_missing,
     "winav": handle_winav,
     "generate": handle_generate, "pov": handle_pov, "abort": handle_abort,
     "family": handle_family, "meta": handle_meta, "discard": handle_discard,

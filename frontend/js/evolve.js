@@ -386,14 +386,16 @@ async function revealInPlaces() {
   if (mode === 'assets') return;
   const id = lastSelId;
   const dir = (id != null && S) ? S.paths[id] : null;
-  if (dir && dir !== S.cwd) await api('cwd', {dir});
+  if (dir && dir !== S.cwd) await api('cwd', {dir}); else await api('check', {});
   setMode('assets');
   await refresh();
   if (id == null) return;
   const t = document.querySelector('#abgrid [data-id="' + id + '"]');
   if (t) t.scrollIntoView({block: 'nearest'});
 }
+let placesView = null;   // null = the cwd; '#missing' = the missing pseudo-folder
 function placesIds() {
+  if (placesView === '#missing') return S.missing || [];
   const cwd = S.cwd;
   return (S.all_ids || []).filter(id => S.paths[id] === cwd);
 }
@@ -405,7 +407,8 @@ function renderPlaces() {
   Object.values(S.paths || {}).forEach(d => { counts[d] = (counts[d] || 0) + 1; });
   // the open folder's ancestors are never folded (reveal must be visible)
   S.cwd.split('/').slice(0, -1).reduce((acc, seg) => { const p2 = acc ? acc + '/' + seg : seg; folded.delete(p2); return p2; }, '');
-  const key = JSON.stringify([S.cwd, S.dirs, counts, placesIds(), S.missing, [...folded]]);
+  if (placesView === '#missing' && !(S.missing || []).length) placesView = null;
+  const key = JSON.stringify([S.cwd, S.dirs, counts, placesIds(), S.missing, [...folded], placesView]);
   if (key === placesKey) { return; }
   placesKey = key;
   const tb = $('#treebody');
@@ -417,7 +420,7 @@ function renderPlaces() {
     if (d !== '.trash' && hiddenBy(d)) return;   // inside a folded ancestor
     const n = document.createElement('div');
     const depth = d === '.trash' ? 0 : d.split('/').length - 1;
-    n.className = 'dnode' + (d === S.cwd ? ' on' : '') + (d === '.trash' ? ' trash' : '');
+    n.className = 'dnode' + (d === S.cwd && !placesView ? ' on' : '') + (d === '.trash' ? ' trash' : '');
     n.style.paddingLeft = (8 + depth * 14) + 'px';
     const kids = d !== '.trash' && hasKids(d);
     n.innerHTML = `<span class="caret" title="${kids ? 'fold / unfold' : ''}">${kids ? (folded.has(d) ? '\u25b8' : '\u25be') : ''}</span>` +
@@ -430,7 +433,7 @@ function renderPlaces() {
       localStorage.setItem('tree:folded', JSON.stringify([...folded]));
       placesKey = ''; renderPlaces();
     });
-    n.addEventListener('click', () => act('cwd', {dir: d}));
+    n.addEventListener('click', () => { placesView = null; act('cwd', {dir: d}); });
     n.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); n.classList.add('over'); });
     n.addEventListener('dragleave', () => n.classList.remove('over'));
     n.addEventListener('drop', async e => {
@@ -440,7 +443,17 @@ function renderPlaces() {
     });
     tb.appendChild(n);
   });
-  $('#abtitle').textContent = S.cwd === '.trash' ? 'trash' : S.cwd;
+  if ((S.missing || []).length) {          // records whose files are gone
+    const m = document.createElement('div');
+    m.className = 'dnode missing' + (placesView === '#missing' ? ' on' : '');
+    m.style.paddingLeft = '8px';
+    m.innerHTML = `<span class="caret"></span><span>missing</span><span class="cnt">${S.missing.length}</span>`;
+    m.title = 'journaled images whose files are gone (deleted outside evolve). Put the files back (same names) and rescan to revive them, or Forget them.';
+    m.addEventListener('click', () => { placesView = '#missing'; placesKey = ''; renderPlaces(); });
+    tb.appendChild(m);
+  }
+  $('#abtitle').textContent = placesView === '#missing' ? 'missing' : (S.cwd === '.trash' ? 'trash' : S.cwd);
+  $('#forgetmissing').hidden = placesView !== '#missing';
   const ids = placesIds();
   $('#abcount').textContent = ids.length;
   const g = $('#abgrid');
@@ -452,7 +465,8 @@ function renderPlaces() {
     if ((S.missing || []).includes(id)) {
       const d = document.createElement('div');
       d.className = 'gonebox';
-      d.textContent = '#' + id + ' missing' + String.fromCharCode(10) + '(file not found - rescan when it returns)';
+      d.dataset.id = id;
+      d.textContent = '#' + id + ' missing' + String.fromCharCode(10) + (S.paths[id] || '') + String.fromCharCode(10) + '(file gone - put it back and rescan, or Forget)';
       g.appendChild(d);
       return;
     }
@@ -463,6 +477,16 @@ function renderPlaces() {
     g.appendChild(im);
   });
 }
+$('#forgetmissing').addEventListener('click', () => {
+  const n = (S && S.missing || []).length;
+  if (!n) return;
+  openDialog('Forget missing', `${n} journaled image(s) have no file on disk. Forgetting tombstones their records: they leave every view and count; the journal keeps their history; no file is touched (there is none).` +
+    String.fromCharCode(10) + String.fromCharCode(10) + 'If the files come back later under the same names, a rescan will NOT revive forgotten records.', 'Forget', async () => {
+      const r = await api('forget_missing', {});
+      if (r.error) notice(r.error); else flash(`forgot ${r.forgotten.length} record(s)`);
+      placesView = null; refresh();
+    });
+});
 $('#absz').addEventListener('click', () => {
   localStorage.setItem('size:abrowse', localStorage.getItem('size:abrowse') === '1' ? '0' : '1');
   placesKey = ''; renderPlaces();
@@ -519,7 +543,10 @@ function setMode(m) {
   if (S) render();
 }
 document.querySelectorAll('#rail .tab[data-mode]').forEach(t =>
-  t.addEventListener('click', () => setMode(t.dataset.mode)));
+  t.addEventListener('click', () => {
+    if (t.dataset.mode === 'assets') api('check', {}).then(() => { setMode('assets'); refresh(); });
+    else setMode(t.dataset.mode);
+  }));
 
 function curLora() {
   return (S.loras || []).find(x => x.name === curLoraName) || (S.loras || [])[0] || null;

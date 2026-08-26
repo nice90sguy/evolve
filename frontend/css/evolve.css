@@ -29,6 +29,8 @@ main{flex:1;display:grid;grid-template-rows:1fr;min-width:0;min-height:0}
 .dnode.on{background:#2e2e36;color:var(--fg)}
 .dnode .cnt{opacity:.55;font-size:11px}
 .dnode.trash{border-top:1px solid var(--line);margin-top:6px;padding-top:6px;font-style:italic}
+.dnode.missing{font-style:italic;color:#d9a441}
+#forgetmissing{background:#3a2a2a;color:var(--fg);border:1px solid #6a4040;cursor:pointer;padding:2px 8px;font-size:11px}
 .dnode.over{outline:2px dashed var(--acc);outline-offset:-2px}
 #asplit{cursor:col-resize;background:var(--line)}
 #asplit:hover,#asplit.drag{background:var(--acc)}

@@ -758,7 +758,27 @@ behaviour they record is unchanged (builders verified byte-identical).
   same features), `api_to_ui.py`, README with the manual curl-level steps,
   and the original experiment payloads.
 
-## Identity is the FILENAME, deliberately spoofable (user rule 2026-08-26)
+## Missing files & ghost folders — BUILT 2026-08-26 (after the Shift+Del incident)
+
+The user Shift+Deleted the whole images/ tree in Explorer (meaning to
+delete an imported game subfolder). Recovery script (scratchpad, one-off)
+restored all 48 originals from the copies evolve holds without saying so:
+staged hardlinks in ComfyUI input/ (exact), `_train/` dataset copies
+(exact), `_migrated/` originals (records carry the ORIGINAL sha1 -> exact
+match), ComfyUI `output/evolve_scratch/` renders (seed-matched, pixel-
+identical, re-wrapped with the evolve chunk). 341 converted game imports
+were unrecoverable (their originals died in the same delete; re-drag the
+game folder). Bug fixed: the tree used to be built from RECORDS' dirs, so
+deleted folders lived on as ghosts. Now: `Store.dirs()` = real
+directories only (filesystem = authority for place); `cwd()` falls back
+to images/ if its folder is gone; `check_files()` = a stat pass (no walk,
+no hashing) run on every cwd change / A-mode entry / rail click so
+Explorer deletions show within a click; a `missing` pseudo-node at the
+bottom of the tree lists records whose files are gone (placeholders with
+their last-known folder) with **Forget all missing** = tombstone (`purge
+{ids, to: forgotten}`; journal keeps the lines; a later reappearance
+does NOT revive forgotten records). `/api/check`, `/api/forget_missing`.
+
 
 The id in the filename IS identity; sha1 is only the import-dedupe /
 no-id-name fallback, NEVER a verifier against the record. "Silently

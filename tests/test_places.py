@@ -74,6 +74,16 @@ def main():
         (rt / "scenes" / "alien.png").unlink()
         r = st2.rescan()
         assert r["missing"] == 1 and st2.missing
+        # the tree is REAL directories: a record naming a deleted folder does not conjure it
+        shutil.rmtree(rt / "chars")                    # B (trashed, home chars/julie) + kid... folder gone
+        assert "chars/julie" not in st2.dirs() and "scenes" in st2.dirs()
+        assert st2.check_files() >= 1
+        # forgetting tombstones missing records without touching files
+        gone = sorted(st2.missing)
+        assert st2.forget_missing() == gone and not st2.missing
+        assert all(not st2.alive(i) for i in gone)
+        st_r = Store(rt)
+        assert all(not st_r.alive(i) for i in gone)   # replays
         # spoofable identity: empty the trash, then a NEW file wearing the
         # old id's name revives the record - lineage and words intact
         st2.archive([A], force=True)

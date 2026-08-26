@@ -218,7 +218,11 @@ class Store:
         return [i for i in self.alive_ids() if self.is_archived(i)]
 
     def cwd(self):
-        return self.state.get("cwd") or DEFAULT_DIR
+        """The open folder - falling back to images/ when it no longer
+        exists on disk (deleted in Explorer): a folder that is gone is not
+        a place, so it is never listed, never born into."""
+        d = self.state.get("cwd") or DEFAULT_DIR
+        return d if (self.dir / d).is_dir() else DEFAULT_DIR
 
     def set_cwd(self, d):
         d = valid_dir(d)
@@ -231,13 +235,11 @@ class Store:
             return True
 
     def dirs(self):
-        """Every directory in the tree: from live records, the cwd, and real
-        (possibly empty) directories on disk. TRASH always listed last."""
+        """Every directory in the tree = the REAL directories on disk (plus
+        the cwd, which set_cwd creates). Records naming a folder that no
+        longer exists do not conjure it: the filesystem is the authority
+        for place; such records are `missing`. TRASH always listed last."""
         out = {DEFAULT_DIR, self.cwd()}
-        for i in self.alive_ids():
-            d = self.images[i]["dir"]
-            if d != TRASH:
-                out.add(d)
         for p in self.dir.rglob("*"):
             if p.is_dir():
                 d = valid_dir(p.relative_to(self.dir).as_posix())
@@ -634,6 +636,29 @@ class Store:
             return report
         finally:
             self.scan_busy = None
+
+    def check_files(self):
+        """A stat pass over known files - the cheap way to notice Explorer
+        deletions without a rescan. Updates `missing`; journals nothing."""
+        with self.lock:
+            self.missing = {i for i in self.alive_ids() if not self.path(i).is_file()}
+            return len(self.missing)
+
+    def forget_missing(self, ids=None):
+        """Tombstone records whose files are gone (Shift+Del in Explorer,
+        a dropped-then-deleted import): purged, no file touched. The
+        journal keeps the lines; the app stops showing placeholders."""
+        with self.lock:
+            self.check_files()
+            todo = sorted(self.missing if ids is None else (set(ids) & self.missing))
+            for i in todo:
+                self.images[i]["purged"] = True
+                self.missing.discard(i)
+            if todo:
+                self._append({"t": "purge", "ids": todo, "to": "forgotten"})
+            self.forget(todo)
+            self.save_state()
+            return todo
 
     # ---------- live state ----------
 
