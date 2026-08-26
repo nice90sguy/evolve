@@ -233,6 +233,20 @@ async def handle_archive(request):
     return ok(touched=touched)
 
 
+async def handle_winav(request):
+    """{dir: -1|1}: browser back/forward for the Working Image. Restores
+    the landed image's recipe, exactly like picking it."""
+    store = ctx(request).store
+    b = await request.json()
+    i = store.nav_step(1 if int(b.get("dir", -1)) > 0 else -1)
+    if i is None:
+        return ok(id=None)
+    with store.lock:
+        restore_from_image(store, i)
+        store.save_state()
+    return ok(id=i)
+
+
 async def handle_cwd(request):
     """Set the working folder (created if missing). Fiat images land here."""
     b = await request.json()
@@ -498,6 +512,7 @@ ROUTES = {
     "place": handle_place, "clear": handle_clear, "pin": handle_pin, "slots": handle_slots,
     "tag": handle_tag, "describe": handle_describe, "archive": handle_archive,
     "cwd": handle_cwd, "move": handle_move, "mkdir": handle_mkdir, "rescan": handle_rescan,
+    "winav": handle_winav,
     "generate": handle_generate, "pov": handle_pov, "abort": handle_abort,
     "family": handle_family, "meta": handle_meta, "discard": handle_discard,
     "prune": handle_prune, "gc": handle_gc,

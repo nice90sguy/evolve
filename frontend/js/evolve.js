@@ -1210,10 +1210,13 @@ $('#gridsz').addEventListener('click', () => {
   localStorage.setItem('size:grid', localStorage.getItem('size:grid') === '1' ? '0' : '1');
   renderGrid();
 });
-function stepHistory(d) {
-  if (!S || !S.history.length) return;
-  let i = S.history.indexOf(S.working); i = i < 0 ? S.history.length - 1 : Math.max(0, Math.min(S.history.length - 1, i + d));
-  act('place', {id: S.history[i], target: 'working'});
+async function navWI(d) {
+  // browser back/forward for the WI (its own stack in state.json, pushed by
+  // every pick, never by scrubbing). History (the strip) stays the sparse
+  // bred-from work log - this is the browse log.
+  const r = await api('winav', {dir: d});
+  if (r.id == null) flash(d < 0 ? 'start of WI history' : 'end of WI history');
+  refresh();
 }
 
 // ---------- focus + keyboard ----------
@@ -1273,7 +1276,7 @@ document.addEventListener('keydown', async e => {
     const d = {ArrowLeft: -1, ArrowRight: 1, ArrowUp: -sheetCols, ArrowDown: sheetCols}[e.key];
     if (Sel.target === 'slot') { e.preventDefault(); Sel.set('slot', Math.max(0, Math.min(S.slots - 1, Sel.index + d))); }
     else if (Sel.target === 'pin') { e.preventDefault(); Sel.set('pin', Math.max(0, Math.min(S.pins.length - 1, Sel.index + Math.sign(d)))); }
-    else if (Sel.target === 'working' && Math.abs(d) === 1) stepHistory(d);
+    else if (Sel.target === 'working' && Math.abs(d) === 1) { e.preventDefault(); navWI(d); }
     else if (Sel.target === 'ref' && Math.abs(d) === 1) { Sel.set('ref', Math.max(0, Math.min(2, Sel.index + d))); }
     else if (Sel.target === 'grid' && listFor('grid')) {   // a GRID: up/down move by a row
       e.preventDefault();

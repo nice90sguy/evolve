@@ -162,6 +162,10 @@ class Store:
             s["working"] = None
         if not valid_dir(s.get("cwd") or ""):
             s["cwd"] = DEFAULT_DIR
+        nav = s.get("nav") or {}
+        stack = [i for i in nav.get("stack") or [] if self.alive(i)]
+        s["nav"] = {"stack": stack, "pos": min(max(int(nav.get("pos", len(stack) - 1)), -1),
+                                               len(stack) - 1)}
 
     @staticmethod
     def _apply_tags(rec, add, remove):
@@ -563,12 +567,41 @@ class Store:
 
     # ---------- live state ----------
 
-    def set_working(self, i):
+    def set_working(self, i, push=True):
+        """push=True (any normal pick) records browser-back navigation: the
+        forward branch is truncated, i lands on top. Scrubbing (nav_step)
+        moves the pointer WITHOUT pushing - the stack is browsing state,
+        persisted in state.json, never journaled (History stays the sparse
+        bred-from work log; this is the browse log)."""
         with self.lock:
             if i is not None and not self.alive(i):
                 raise ValueError(f"no such image {i}")
             self.state["working"] = i
+            if push and i is not None:
+                nav = self.state["nav"]
+                st, pos = nav["stack"], nav["pos"]
+                if not (0 <= pos < len(st) and st[pos] == i):
+                    del st[pos + 1:]
+                    st.append(i)
+                    del st[:-100]                     # cap; oldest browsing falls off
+                    nav["pos"] = len(st) - 1
             self.save_state()
+
+    def nav_step(self, direction):
+        """Browser back (-1) / forward (+1) for the WI. Skips dead entries;
+        returns the new WI id or None at the end of the stack."""
+        with self.lock:
+            nav = self.state["nav"]
+            st, pos = nav["stack"], nav["pos"]
+            while True:
+                pos += 1 if direction > 0 else -1
+                if not (0 <= pos < len(st)):
+                    return None
+                if self.alive(st[pos]):
+                    break
+            nav["pos"] = pos
+            self.set_working(st[pos], push=False)
+            return st[pos]
 
     def hist_append(self, i):
         with self.lock:

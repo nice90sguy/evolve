@@ -56,6 +56,13 @@ def main():
         assert r["moved"] == 1 and r["imported"] == 2 and r["skipped"], r
         aliens = [i for i in st.alive_ids() if st.images[i]["source"] == "scan"]
         assert len(aliens) == 2 and all(st.image_dir(i) == "scenes" for i in aliens)
+        # WI browser-back: picks push (forward branch truncated), scrub moves
+        st.set_working(A); st.set_working(B); st.set_working(kid)
+        assert st.state["nav"]["stack"][-3:] == [A, B, kid]
+        assert st.nav_step(-1) == B and st.state["working"] == B
+        assert st.nav_step(-1) == A and st.nav_step(1) == B
+        st.set_working(kid)                       # new pick truncates forward
+        assert st.state["nav"]["stack"][-3:] == [A, B, kid] and st.nav_step(1) is None
         # journal replays to the same shape
         st2 = Store(rt)
         assert st2.image_dir(A) == "scenes" and st2.is_archived(B) and st2.images[B]["home"] == "chars/julie"
