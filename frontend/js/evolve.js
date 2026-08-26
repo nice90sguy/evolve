@@ -293,15 +293,20 @@ function thumb(id, cls) {
     d.title = '#' + id + ' — the record survives in the journal; the file was emptied or deleted';
     if (im.parentNode) im.replaceWith(d);
   }, {once: true});
-  w.appendChild(im);
+  // .thi shrink-wraps the IMAGE (not the box), so the marks sit at the
+  // picture's own corners whatever the container's shape
+  const inner = document.createElement('span');
+  inner.className = 'thi';
+  inner.appendChild(im);
   if (S && (S.pins || []).includes(id)) {
-    const p = document.createElement('span'); p.className = 'pinmark'; p.innerHTML = icon(I.pin, 14); p.title = 'pinned';
-    w.appendChild(p);
+    const p = document.createElement('span'); p.className = 'pinmark'; p.innerHTML = icon(I.pin, 12); p.title = 'pinned';
+    inner.appendChild(p);
   }
   if (S && (S.fresh || []).includes(id)) {
     const f = document.createElement('span'); f.className = 'freshmark'; f.title = 'fresh: untouched output - the next round on its tab throws it away';
-    w.appendChild(f);
+    inner.appendChild(f);
   }
+  w.appendChild(inner);
   return w;
 }
 function tip(id) {
