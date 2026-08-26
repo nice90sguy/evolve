@@ -26,10 +26,16 @@ const Sel = (() => {
     const l = listFor(cur.target); if (l) return l[cur.index] ?? null;
     return null;
   };
+  let lastApplied = '';
   function apply() {
     document.querySelectorAll('.focus, .alias').forEach(e => e.classList.remove('focus', 'alias'));
     const e0 = el();
-    if (e0) { e0.classList.add('focus'); if (e0.tagName === 'IMG') e0.scrollIntoView({inline: 'nearest', block: 'nearest'}); }
+    const key = cur.target + ':' + cur.index + ':' + id();
+    if (e0) {
+      e0.classList.add('focus');
+      if (e0.tagName === 'IMG' && key !== lastApplied) e0.scrollIntoView({inline: 'nearest', block: 'nearest'});
+    }
+    lastApplied = key;
     const i = id();
     if (i != null) lastSelId = i;
     if (i != null) {    // SELECTED_ALIAS: every other Image showing the same underlying image.
@@ -362,12 +368,16 @@ function placesIds() {
   const cwd = S.cwd;
   return (S.all_ids || []).filter(id => S.paths[id] === cwd);
 }
+let placesKey = '';
 function renderPlaces() {
   if (mode !== 'assets' || !S) return;
-  const tb = $('#treebody');
-  tb.innerHTML = '';
   const counts = {};
   Object.values(S.paths || {}).forEach(d => { counts[d] = (counts[d] || 0) + 1; });
+  const key = JSON.stringify([S.cwd, S.dirs, counts, placesIds(), S.missing]);
+  if (key === placesKey) { return; }
+  placesKey = key;
+  const tb = $('#treebody');
+  tb.innerHTML = '';
   (S.dirs || []).forEach(d => {
     const n = document.createElement('div');
     const depth = d === '.trash' ? 0 : d.split('/').length - 1;
@@ -450,6 +460,7 @@ function setMode(m) {
   ['#stage', '#split', '#genpanel'].forEach(sel => { $(sel).style.display = mode === 'evolver' ? '' : 'none'; });
   $('#loras').hidden = mode !== 'loras';
   $('#page-assets').hidden = mode !== 'assets';
+  placesKey = '';                          // re-render the pane on entry
   $('#page-story').hidden = mode !== 'story';
   $('#top').style.display = (mode === 'evolver' || mode === 'loras') ? '' : 'none';
   if (S) render();
@@ -478,6 +489,9 @@ function renderLoras() {
   // never rebuild the grid under an in-progress caption edit
   if ($('#lgrid').contains(document.activeElement)) return;
   const g = $('#lgrid');
+  const lkey = a ? JSON.stringify([a.name, datasetIds(a), (S.descriptions || {})]) : 'none';
+  if (g.dataset.key === lkey) return;
+  g.dataset.key = lkey;
   g.innerHTML = '';
   if (!a) { g.innerHTML = '<span class="hint">no LoRAs yet — “+ new” creates one</span>'; return; }
   datasetIds(a).forEach((id, k) => {
@@ -1210,13 +1224,19 @@ $('#gridsz').addEventListener('click', () => {
   localStorage.setItem('size:grid', localStorage.getItem('size:grid') === '1' ? '0' : '1');
   renderGrid();
 });
+let navBusy = false;
 async function navWI(d) {
   // browser back/forward for the WI (its own stack in state.json, pushed by
   // every pick, never by scrubbing). History (the strip) stays the sparse
-  // bred-from work log - this is the browse log.
-  const r = await api('winav', {dir: d});
-  if (r.id == null) flash(d < 0 ? 'start of WI history' : 'end of WI history');
-  refresh();
+  // bred-from work log - this is the browse log. One request in flight -
+  // key autorepeat must not queue a flood.
+  if (navBusy) return;
+  navBusy = true;
+  try {
+    const r = await api('winav', {dir: d});
+    if (r.id == null) flash(d < 0 ? 'start of WI history' : 'end of WI history');
+    await refresh();
+  } finally { navBusy = false; }
 }
 
 // ---------- focus + keyboard ----------
