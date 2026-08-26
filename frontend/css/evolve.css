@@ -37,13 +37,13 @@ main{flex:1;display:grid;grid-template-rows:1fr;min-width:0;min-height:0}
 #abgrid{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;padding:12px;align-content:start}
 #abgrid img{width:100%;aspect-ratio:1;object-fit:cover;border:2px solid transparent;border-radius:3px;cursor:pointer}
 #abgrid.big{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
-.dnode .caret{width:12px;flex:none;color:var(--dim);font-size:10px;text-align:center}
+.dnode .caret{width:18px;flex:none;color:var(--dim);font-size:14px;line-height:1;text-align:center}
 .dnode .caret:hover{color:var(--fg)}
 #abgrid .gonebox{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border:1px dashed var(--line);border-radius:3px;color:var(--dim);font-size:11px;text-align:center;padding:4px}
 #top{min-width:0;border-top:1px solid var(--line);background:var(--bg)}
 .car{padding:2px 10px;min-width:0;max-width:100%}
 .car summary{cursor:pointer;color:var(--dim);font-size:12px;user-select:none;padding:3px 6px;display:flex;align-items:center;gap:6px}
-.car summary::before{content:'▸';color:var(--dim);font-size:10px;flex:none}
+.car summary::before{content:'▸';color:var(--dim);font-size:14px;line-height:1;width:14px;flex:none}
 .car[open] summary::before{content:'▾'}
 .car summary:hover{background:#26262c}
 #genea>summary:hover{background:#26262c}
@@ -93,7 +93,11 @@ main{flex:1;display:grid;grid-template-rows:1fr;min-width:0;min-height:0}
 .dot.bad{background:#c44}
 #prog{width:150px}
 #genea{border-bottom:1px solid var(--line)}
-#genea>summary{padding:3px 10px;color:var(--dim);font-size:12px;cursor:pointer;user-select:none}
+#genea>summary{padding:3px 10px;color:var(--dim);font-size:12px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px}
+#genea>summary::before{content:'▸';color:var(--dim);font-size:14px;line-height:1;width:14px;flex:none}
+#genea[open]>summary::before{content:'▾'}
+summary{list-style:none}
+summary::-webkit-details-marker{display:none}
 #genea>summary b{color:var(--fg);font-weight:500}
 #genea .car{margin-left:16px}
 .gone{width:64px;height:64px;flex:none;display:flex;align-items:center;justify-content:center;border:2px dashed var(--line);border-radius:3px;color:var(--dim);font-size:10px;text-align:center;cursor:default}
