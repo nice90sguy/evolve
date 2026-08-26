@@ -353,6 +353,9 @@ async def handle_generate(request):
         c["refs"] = [None, None, None]
     else:
         c["family"] = "klein"
+        if c.get("size_from_ref0") and c.get("ref0") is not None:
+            r0 = store.images[c["ref0"]]         # Derive at the mother's size
+            c["width"], c["height"] = r0["w"], r0["h"]
     try:
         cfg = GenerateConfig.from_controls(c, op)
     except ValidationError as e:

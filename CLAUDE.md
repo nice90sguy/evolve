@@ -758,6 +758,26 @@ behaviour they record is unchanged (builders verified byte-identical).
   same features), `api_to_ui.py`, README with the manual curl-level steps,
   and the original experiment payloads.
 
+## Render size & background — SETTLED 2026-08-26 (app design)
+
+- **w/h are GENERATION controls** and live in the Generate panel's shared
+  block (Create + Derive), not the status bar. Create: the fiat latent
+  size, editable. Derive: checkbox **"size of ref0"** (control
+  `size_from_ref0`, default on) — checked: w/h show ref0's dimensions and
+  are LOCKED (the server substitutes ref0's w/h at generate time, so the
+  fields are display only); unchecked: freely editable. Camera ignores
+  them (output follows the source). The ref0 gestures (dbl-click WI,
+  Space-click) no longer copy dims into w/h — the checkbox owns that.
+- **Defaults come from config**: `default_width` / `default_height` in
+  `<root>/config.json` (`project.DEFAULT_SETTINGS`, clamped 16..4096),
+  applied by `controls.fresh_controls()`; editable in the Settings
+  (cogwheel) workspace once it exists — until then edit the file.
+- **Background is FIXED at white** (flatten colour on import/staging and
+  the Klein "white bg" prompt prefix). Not a setting: matting off black
+  fails on dark clothing (empirical), and a black-flattened reference fed
+  to a white-background prompt contradicts itself. A black/white config
+  option was considered and REJECTED.
+
 ## Candidates, freshness & pinning — BUILT 2026-08-26 (user's business rules)
 
 - **`fresh`** (record flag, journaled): every output of Create / Derive /

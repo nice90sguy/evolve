@@ -20,7 +20,7 @@ from pathlib import Path
 NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
 TAG_RE = re.compile(r"[^\s,]{1,64}")          # a word: no whitespace, no commas
 RESERVED_WORDS = {"archived"}                 # a state bit, never a word
-DEFAULT_SETTINGS = {"default_tags": []}
+DEFAULT_SETTINGS = {"default_tags": [], "default_width": 1024, "default_height": 1024}
 
 _ROOT = None
 
@@ -100,6 +100,11 @@ def load_settings():
     s = dict(DEFAULT_SETTINGS)
     s.update({k: c[k] for k in DEFAULT_SETTINGS if k in c})
     s["default_tags"] = clean_tags(s["default_tags"])
+    for k in ("default_width", "default_height"):
+        try:
+            s[k] = max(16, min(4096, int(s[k])))
+        except (TypeError, ValueError):
+            s[k] = 1024
     return s
 
 

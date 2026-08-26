@@ -6,6 +6,7 @@ restore-from-recipe rule (picking an image restores the run state that
 GENERATED it). The client renders/reads widgets by these same names.
 """
 from model_family import DEFAULT_MODEL_FAMILY, parse_model_family
+from project import load_settings
 
 TABS = ("create", "derive", "camera")
 
@@ -14,6 +15,7 @@ CONTROLS = {"prompt": "", "negative": "", "family": "klein",
             "lora": "", "lora_strength": 1.0, "lock": "SOFT_LOCK",
             "vary": 0.0, "seed": 0, "whitebg": True,
             "width": 1024, "height": 1024, "fresh_model": False,
+            "size_from_ref0": True,        # Derive: render at ref0's size (else w/h as typed)
             "steps": 0, "cfg": 0,          # 0 = the family's default
             "tab": "create",               # active action-panel tab (v3)
             "seed_create": 0, "seed_derive": 0, "seed_camera": 0,
@@ -25,6 +27,8 @@ CONTROLS = {"prompt": "", "negative": "", "family": "klein",
 def fresh_controls():
     c = dict(CONTROLS)
     c["refs"] = [None, None, None]
+    s = load_settings()                    # w/h defaults live in config (Settings page later)
+    c["width"], c["height"] = s["default_width"], s["default_height"]
     return c
 
 

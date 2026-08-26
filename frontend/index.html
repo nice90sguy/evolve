@@ -68,6 +68,8 @@
             <label>lora <select id="lora"><option value="">(none)</option></select></label>
             <label>str <input type="number" id="lstr" step="0.1" min="0" max="4" value="1"></label>
             <label><input type="checkbox" id="whitebg" checked> white bg</label>
+            <label title="render size (defaults from config; Settings page later)">w <input type="number" id="width" step="16" value="1024"></label>
+            <label>h <input type="number" id="height" step="16" value="1024"></label>
           </div>
         </div>
         <div class="tpage" data-tab="create">
@@ -85,6 +87,7 @@
               <div class="ref drop" data-target="ref" data-index="1" tabindex="0"><span class="hint">+</span></div>
               <div class="ref drop" data-target="ref" data-index="2" tabindex="0"><span class="hint">+</span></div>
             </span>
+            <label title="render at ref0's size (w/h follow it and lock); unchecked = w/h as you type them"><input type="checkbox" id="sizeref0" checked> size of ref0</label>
             <label>lock <select id="lock"><option>SOFT_LOCK</option><option>MID_LOCK</option><option>HARD_LOCK</option></select></label>
             <label>vary <input type="range" id="vary" min="0" max="0.5" step="0.02" value="0" title="sibling variety: seeded noise added to the reference latent. 0.1-0.3 useful; above ~0.45 the reference is mostly noise and output degrades"> <span id="varyv">0</span></label>
             <label>Outputs: <input type="number" id="outputs_derive" min="1" max="64" value="6"></label>
@@ -174,8 +177,6 @@
 </div>
 <div id="bottom">
     <span class="lab">session</span>
-    <label>w <input type="number" id="width" step="16" value="1024"></label>
-    <label>h <input type="number" id="height" step="16" value="1024"></label>
     <label title="reload pristine model weights before every round (~15-30s); otherwise only after a round that used a LoRA (ComfyUI #11021)"><input type="checkbox" id="fresh"> reload model on Generate</label>
     <button id="gc" title="Empty the trash into the Windows Recycle Bin (an impact summary asks first; nothing is ever hard-deleted)">Empty trash</button>
     <span id="msg"></span>

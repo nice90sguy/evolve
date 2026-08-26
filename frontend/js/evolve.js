@@ -336,7 +336,7 @@ function render() {
   renderSlots();
   // controls: never overwrite a widget you are editing (idle polls re-render)
   const c = S.controls;
-  if (!$('#controls').contains(document.activeElement) && !$('#bottom').contains(document.activeElement)) {
+  if (!$('#controls').contains(document.activeElement)) {
     $('#prompt').value = c.prompt; $('#negative').value = c.negative || '';
     const fs = $('#family');
     fs.innerHTML = Object.entries(S.families).map(([k, f]) => `<option value="${k}">${f.label}</option>`).join('');
@@ -348,6 +348,7 @@ function render() {
     $('#width').value = c.width; $('#height').value = c.height;
     $('#whitebg').checked = c.whitebg;
     $('#fresh').checked = !!c.fresh_model;
+    $('#sizeref0').checked = c.size_from_ref0 !== false;
     ['create', 'derive', 'camera'].forEach(t => {
       $('#outputs_' + t).value = c['outputs_' + t] || 6;
       $('#seed_' + t).value = c['seed_' + t] || 0;
@@ -836,11 +837,7 @@ function setTab(t, user) {
       // touched - a pick's restored parent outranks the WI. Del + return
       // refills; changing the WI while ON the tab does not.
       if (t === 'derive' && S.controls.ref0 == null && S.working != null) {
-        api('place', {id: S.working, target: 'ref0'}).then(() => {
-          const m = S.meta[S.working];
-          if (m) { $('#width').value = m.w; $('#height').value = m.h; saveControls(); }
-          refresh();
-        });
+        api('place', {id: S.working, target: 'ref0'}).then(refresh);
       }
     }
   }
@@ -1122,6 +1119,7 @@ function readControls() {
     vary: +$('#vary').value, whitebg: $('#whitebg').checked,
     width: +$('#width').value || 1024, height: +$('#height').value || 1024,
     fresh_model: $('#fresh').checked,
+    size_from_ref0: $('#sizeref0').checked,
     tab: t,
     seed: sEl ? (+sEl.value || 0) : 0,           // the ACTIVE tab's seed
     seed_create: +$('#seed_create').value || 0,
@@ -1182,7 +1180,7 @@ function readControls() {
 }
 let saveT = null;
 function saveControls() { clearTimeout(saveT); saveT = setTimeout(() => api('controls', readControls()), 400); }
-['#prompt', '#negative', '#family', '#steps', '#cfg', '#lora', '#lstr', '#lock', '#vary', '#width', '#height', '#whitebg', '#fresh',
+['#prompt', '#negative', '#family', '#steps', '#cfg', '#lora', '#lstr', '#lock', '#vary', '#width', '#height', '#whitebg', '#fresh', '#sizeref0',
  '#seed_create', '#seed_derive', '#seed_camera', '#outputs_create', '#outputs_derive', '#outputs_camera']
   .forEach(s => $(s).addEventListener('input', () => { $('#varyv').textContent = $('#vary').value; saveControls(); }));
 // dbl-click the Working Image = copy it to ref0 (works from any tab;
@@ -1190,8 +1188,6 @@ function saveControls() { clearTimeout(saveT); saveT = setTimeout(() => api('con
 $('#stagebox').addEventListener('dblclick', async () => {
   if (!S || S.working == null) return;
   await api('place', {id: S.working, target: 'ref0'});
-  const m = S.meta[S.working];
-  if (m) { $('#width').value = m.w; $('#height').value = m.h; saveControls(); }
   flash(`ref0 ← #${S.working}`);
   refresh();
 });
@@ -1203,8 +1199,6 @@ document.addEventListener('click', async e => {
   const id = Sel.id();          // mousedown just focused the clicked box
   if (id == null) return;
   await api('place', {id, target: 'ref0'});
-  const m = S.meta[id];
-  if (m) { $('#width').value = m.w; $('#height').value = m.h; saveControls(); }
   flash(`ref0 ← #${id}`);
   refresh();
 });
@@ -1244,10 +1238,19 @@ function fillLoras(want) {
   lsel.innerHTML = '<option value="">(none)</option>' + opts.map(l => `<option>${l}</option>`).join('');
   lsel.value = opts.includes(cur) ? cur : '';
 }
+function sizeUI() {
+  // Derive + "size of ref0": w/h show ref0's dims and lock; otherwise editable
+  if (!S) return;
+  const lock = activeTab() === 'derive' && $('#sizeref0').checked && S.controls.ref0 != null;
+  const m = lock ? S.meta[S.controls.ref0] : null;
+  if (m) { $('#width').value = m.w; $('#height').value = m.h; }
+  $('#width').disabled = lock; $('#height').disabled = lock;
+}
 function familyUI() {
   // v3: the TAB is the fiat gate - the dropdown is always live on Create,
   // and Derive is Klein by construction (no dropdown there at all)
   if (!S) return;
+  sizeUI();
   const fam = activeFamily();
   const f = S.families[fam] || S.families.klein;
   if (!$('#controls').contains(document.activeElement)) fillLoras();
@@ -1262,6 +1265,7 @@ function familyUI() {
   $('#lstr').parentElement.classList.toggle('off', noLora);
 }
 $('#family').addEventListener('change', () => { $('#steps').value = ''; $('#cfg').value = ''; fillLoras(''); familyUI(); saveControls(); });
+$('#sizeref0').addEventListener('change', () => { sizeUI(); saveControls(); });
 ['create', 'derive', 'camera'].forEach(t => $('#outputs_' + t).addEventListener('change', () => {
   if (activeTab() === t) act('slots', {slots: +$('#outputs_' + t).value || 1});
 }));
