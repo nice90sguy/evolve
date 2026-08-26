@@ -454,6 +454,12 @@ function renderPlaces() {
       e.stopPropagation();
       if (folded.has(d)) folded.delete(d); else folded.add(d);
       localStorage.setItem('tree:folded', JSON.stringify([...folded]));
+      if (folded.has(d) && S.cwd.startsWith(d + '/')) {
+        // folding over the open folder: the outer folder becomes the open
+        // one (an open folder's ancestors are always shown unfolded)
+        placesView = null; act('cwd', {dir: d});
+        return;
+      }
       placesKey = ''; renderPlaces();
     });
     n.addEventListener('click', () => { placesView = null; act('cwd', {dir: d}); });
