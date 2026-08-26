@@ -151,7 +151,9 @@ const LISTS = {
   gkid:  () => famData && famData.children.map(x => x.id),
   grid:  () => (gridName && gridName !== 'grid') ? listFor(gridName) : null,
   lora:  () => { const x = curLora(); return x ? datasetIds(x) : null; },
-  abrowse: () => (mode === 'assets' && S) ? placesIds() : null,
+  // NOT mode-gated: a selection made in A keeps its identity when the pane
+  // is hidden, so its aliases (dashed) still mark every visible twin in E
+  abrowse: () => S ? placesIds() : null,
 };
 function listFor(name) {
   if (!S) return null;
