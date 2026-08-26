@@ -4,6 +4,35 @@
 <link rel="stylesheet" href="/static/css/evolve.css">
 </head><body>
 <div id="app">
+<div id="ctxbar" title="context: your current work focus — tags/views and global filters live here">
+  <div id="ctxrow">
+    <span id="rootname" class="hint" title="the store root"></span>
+    <div id="wordbar" title="views: a lit word filters the carousel below; click again to turn it off"></div>
+    <span id="carshow">
+      <label title="show the Pinned carousel (all modes)"><input type="checkbox" id="show_pin" checked> Pinned</label>
+      <label class="eonly" title="show the History carousel (E mode)"><input type="checkbox" id="show_hist" checked> History</label>
+      <label class="eonly" title="show the Family (genealogy) sheets (E mode)"><input type="checkbox" id="show_fam" checked> Family</label>
+    </span>
+    <span class="spacer"></span>
+    <label title="words put on every image the app makes or imports (comma-separated); bred images also copy their mother's words">default tags <input type="text" id="deftags" placeholder="softlock, (c) 2026 Josh" style="width:200px"></label>
+  </div>
+  <div id="top">
+    <details class="car drop" id="car-pin" data-target="pin" data-index="999"><summary><b>Pinned</b> <span class="n">0</span> — the word <i>pinned</i>: P pins the selection; Del here unpins; drop / paste to pin</summary>
+      <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
+    <details class="car" id="car-all"><summary><b id="viewname">View</b> <span class="n">0</span> — <span id="viewhint"></span></summary>
+      <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
+    <details class="car" id="car-hist" open><summary><b>History</b> <span class="n">0</span> — images bred from: the ref0 of each Generate, the source of each POV; newest first</summary>
+      <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
+    <details id="genea"><summary><b>Family</b> — of the Working Image</summary>
+      <details class="car" id="car-gpar" open><summary><b>Parents</b> <span class="n">0</span> — its reference images</summary>
+        <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
+      <details class="car" id="car-gsib" open><summary><b>Siblings</b> <span class="n">0</span> — identical config, seeds aside</summary>
+        <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
+      <details class="car" id="car-gkid" open><summary><b>Children</b> <span class="n">0</span> — images that used it as an input</summary>
+        <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
+    </details>
+  </div>
+</div>
 <div id="mainrow">
   <div id="rail">
     <a class="tab on" data-mode="evolver" title="Evolve — breed images (E)">E</a>
@@ -13,30 +42,7 @@
     <span class="spacer"></span>
     <a class="tab gear" title="settings — later">⚙</a>
   </div>
-  <div id="deskcol">
-  <div id="ctxbar" title="context: your current work focus — tags/views and global filters live here">
-    <span id="rootname" class="hint" title="the store root"></span>
-    <div id="wordbar" title="views: every word is a view — click a word to see its images"></div>
-    <span class="spacer"></span>
-    <label title="words put on every image the app makes or imports (comma-separated); bred images also copy their mother's words">default tags <input type="text" id="deftags" placeholder="softlock, (c) 2026 Josh" style="width:200px"></label>
-  </div>
   <main>
-  <div id="top">
-    <details class="car" id="car-hist" open><summary><b>History</b> <span class="n">0</span> — images bred from: the ref0 of each Generate, the source of each POV; newest first</summary>
-      <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
-    <details class="car drop" id="car-pin" data-target="pin" data-index="999"><summary><b>Pinned</b> <span class="n">0</span> — the word <i>pinned</i>: P pins the selection; Del here unpins; drop / paste to pin</summary>
-      <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
-    <details class="car" id="car-all"><summary><b id="viewname">All</b> <span class="n">0</span> — <span id="viewhint">every image, by number</span></summary>
-      <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
-    <details id="genea"><summary><b>Genealogy</b> — of the Working Image</summary>
-      <details class="car" id="car-gpar" open><summary><b>Parents</b> <span class="n">0</span> — its reference images</summary>
-        <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
-      <details class="car" id="car-gsib" open><summary><b>Siblings</b> <span class="n">0</span> — identical config, seeds aside</summary>
-        <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
-      <details class="car" id="car-gkid" open><summary><b>Children</b> <span class="n">0</span> — images that used it as an input</summary>
-        <div class="row"><button class="arrow" data-dir="-1">‹</button><div class="strip"></div><button class="arrow" data-dir="1">›</button></div></details>
-    </details>
-  </div>
   <div id="work">
     <div id="stage">
       <div id="stagebox" class="drop" data-target="working" tabindex="0"><div class="hint">working image<br>drop · paste · double-click a candidate</div></div>
@@ -163,7 +169,6 @@
   <div id="page-story" class="stub" hidden>Story — keyframes, dialog, transitions, tweens, decision points. Later.</div>
   </div>
   </main>
-  </div>
 </div>
 <div id="bottom">
     <span class="lab">session</span>

@@ -83,52 +83,49 @@ const imgURL = id => location.origin + '/img/' + id;
 // carousel shows every image carrying the chosen word. archived is a BIT,
 // not a word: archived images are hidden from every view unless the
 // 'show archived' toggle is on; 'trash' is the view of exactly those.
-let curWord = localStorage.getItem('view:word') || '*';
+let curWord = localStorage.getItem('view:word') || '';
+if (curWord === '*' || curWord === '#trash') curWord = '';   // retired pseudo-views
 let showArchived = localStorage.getItem('view:archived') === '1';
 const isArchived = id => archivedSet.has(id);
 let archivedSet = new Set();
+const carShow = k => localStorage.getItem('show:' + k) !== '0';
 function viewIds() {
-  if (!S) return [];
-  if (curWord === '#trash') return S.archived || [];
-  const ids = curWord === '*' ? (S.all_ids || []) : (S.all_ids || []).filter(id => (S.tags[id] || []).includes(curWord));
+  if (!S || !curWord) return [];
+  const ids = (S.all_ids || []).filter(id => (S.tags[id] || []).includes(curWord));
   return showArchived ? ids : ids.filter(id => !isArchived(id));
 }
 function renderWords() {
   archivedSet = new Set(S.archived || []);
   const bar = $('#wordbar');
-  // chip counts match what CLICKING the chip will show: archived images
-  // count only when the toggle lets them through (was: server-side counts
-  // over everything - "12" on a chip whose view showed 6, user-caught)
+  // chip counts match what LIGHTING the chip will show (archived per toggle)
   const counts = {};
-  let allN = 0;
   (S.all_ids || []).forEach(id => {
     if (!showArchived && isArchived(id)) return;
-    allN++;
     (S.tags[id] || []).forEach(w => { counts[w] = (counts[w] || 0) + 1; });
   });
-  const words = Object.keys(S.words || {}).sort((a, b) => a.localeCompare(b))
-    .map(w => [w, counts[w] || 0]);
-  if (curWord !== '*' && curWord !== '#trash' && !(curWord in (S.words || {}))) curWord = '*';
+  if (curWord && !(curWord in (S.words || {}))) curWord = '';
   bar.innerHTML = '';
-  const chip = (w, n, label, cls) => {
-    const c = document.createElement('span');
-    c.className = 'chip' + (w === curWord ? ' on' : '') + (cls ? ' ' + cls : '');
-    c.innerHTML = `${label || w} <span class="cnt">${n}</span>`;
-    c.title = w === '*' ? 'every image' : w === '#trash' ? 'archived images (the trash)' : `images carrying the word "${w}"`;
-    c.addEventListener('click', () => { curWord = w; localStorage.setItem('view:word', w); render(); });
-    bar.appendChild(c);
-  };
-  chip('*', allN, 'all');
-  words.forEach(([w, n]) => chip(w, n));
-  chip('#trash', (S.archived || []).length, 'trash', 'arch');
+  Object.keys(S.words || {}).filter(w => w !== 'pinned')   // Pinned has its own carousel
+    .sort((a, b) => a.localeCompare(b)).forEach(w => {
+      const c = document.createElement('span');
+      c.className = 'chip' + (w === curWord ? ' on' : '');
+      c.innerHTML = `${w} <span class="cnt">${counts[w] || 0}</span>`;
+      c.title = `filter the carousel below to images carrying "${w}" (click again to turn off)`;
+      c.addEventListener('click', () => {        // slugs TOGGLE; none lit = no carousel
+        curWord = curWord === w ? '' : w;
+        localStorage.setItem('view:word', curWord);
+        render();
+      });
+      bar.appendChild(c);
+    });
   const tg = document.createElement('label');
   tg.className = 'chip tog' + (showArchived ? ' on' : '');
-  tg.title = 'show archived images inside the other views (they stay hidden otherwise)';
+  tg.title = 'show archived images inside the views (browse the trash itself in A mode)';
   tg.innerHTML = `<input type="checkbox" ${showArchived ? 'checked' : ''}> show archived`;
   tg.querySelector('input').addEventListener('change', e => { showArchived = e.target.checked; localStorage.setItem('view:archived', showArchived ? '1' : '0'); render(); });
   bar.appendChild(tg);
-  $('#viewname').textContent = curWord === '*' ? 'All' : curWord === '#trash' ? 'Trash' : curWord;
-  $('#viewhint').textContent = curWord === '*' ? 'every image, by number' : curWord === '#trash' ? 'archived images — purge removes those nothing live descends from' : `every image carrying "${curWord}", by number`;
+  $('#viewname').textContent = curWord || 'View';
+  $('#viewhint').textContent = curWord ? `every image carrying "${curWord}", by number` : '';
 }
 
 // ---------- named strips: ONE carousel that works anywhere ----------
@@ -294,6 +291,12 @@ function render() {
   renderCarousel('hist', S.history);
   renderCarousel('pin', S.pins);
   renderWords();
+  // carousel presence: Pinned everywhere (checkbox), History E-only
+  // (checkbox), the tag carousel only while a slug is lit; Family is
+  // decided in renderGenealogy (E + checkbox + non-trivial)
+  $('#car-pin').hidden = !carShow('pin');
+  $('#car-hist').hidden = !(mode === 'evolver' && carShow('hist'));
+  $('#car-all').hidden = !curWord;
   renderCarousel('all', viewIds());
   // stage
   const box = $('#stagebox'); box.innerHTML = '';
@@ -473,7 +476,8 @@ function setMode(m) {
   $('#page-assets').hidden = mode !== 'assets';
   placesKey = '';                          // re-render the pane on entry
   $('#page-story').hidden = mode !== 'story';
-  $('#top').style.display = (mode === 'evolver' || mode === 'loras') ? '' : 'none';
+  document.querySelectorAll('#carshow .eonly').forEach(l =>
+    l.style.display = mode === 'evolver' ? '' : 'none');
   if (S) render();
 }
 document.querySelectorAll('#rail .tab[data-mode]').forEach(t =>
@@ -871,18 +875,20 @@ function genUI() {
 // v2 (2026-08-23): flat read-only carousels anchored to the Working Image.
 // No walking, no decks - dbl-click an ancestor to make IT the WI instead.
 async function renderGenealogy() {
-  if (!$('#genea').open) return;
-  if (!S || S.working == null) {
-    famData = null; famKey = null;
-    ['gpar', 'gsib', 'gkid'].forEach(n => fillStrip(n, [], 'no working image'));
+  const g = $('#genea');
+  if (mode !== 'evolver' || !carShow('fam') || !S || S.working == null) {
+    g.hidden = true; famData = null; famKey = null;
     return;
   }
   const key = S.working + ':' + JSON.stringify(S.candidates);   // children grow as a round lands
   if (key !== famKey) {
     const r = await api('family', {id: S.working});
-    if (r.error) return;
+    if (r.error) { g.hidden = true; return; }
     famData = r; famKey = key;
   }
+  // auto-hide a trivial family: no parents, no children, no siblings but itself
+  g.hidden = !famData.parents.length && !famData.children.length && famData.siblings.length <= 1;
+  if (g.hidden) return;
   const tile = t => {
     const im = thumb(t.id);
     im.addEventListener('dblclick', () => act('place', {id: t.id, target: 'working'}));
@@ -1171,6 +1177,11 @@ $('#gen').addEventListener('click', async () => {
   }
   if (r.error) alert(r.error);
   refresh();
+});
+[['show_pin', 'pin'], ['show_hist', 'hist'], ['show_fam', 'fam']].forEach(([id, k]) => {
+  const cb = $('#' + id);
+  cb.checked = carShow(k);
+  cb.addEventListener('change', () => { localStorage.setItem('show:' + k, cb.checked ? '1' : '0'); if (S) render(); });
 });
 $('#deftags').addEventListener('change', () => {
   api('settings', {default_tags: $('#deftags').value.split(',')}).then(refresh);
