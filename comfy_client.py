@@ -84,27 +84,38 @@ def interrupt():
     urllib.request.urlopen(API_URL + "/interrupt", data=b"", timeout=2).read()
 
 
-_PING = {"t": 0.0, "ok": False, "fails": 0}
+_PING = {"ok": False, "fails": 0, "busy": False, "thread": False}
+
+
+def _ping_loop():
+    """Daemon: one liveness probe every 5s. is_alive() only ever READS the
+    cached answer - the old in-line probe ran INSIDE the aiohttp event loop
+    and stalled every request for up to its 2s timeout whenever ComfyUI was
+    slow to answer (the ~2000ms UI hiccups, user-caught via the nav log).
+    A round in flight is live proof (never probe a busy worker); one slow
+    answer is not death: 3 consecutive failures turn the dot red."""
+    while True:
+        if _PING["busy"]:
+            _PING["ok"], _PING["fails"] = True, 0
+        else:
+            try:
+                urllib.request.urlopen(API_URL + "/system_stats", timeout=2).read()
+                _PING["ok"], _PING["fails"] = True, 0
+            except Exception:
+                _PING["fails"] += 1
+                if _PING["fails"] >= 3:
+                    _PING["ok"] = False
+        time.sleep(5)
 
 
 def is_alive(busy=False):
-    """Cached liveness for a status dot. A round in flight is live proof it
-    is up (never ping a busy worker - the event loop stalls under GPU load
-    and the dot flickered red, user-reported). One slow answer is not
-    death: only 3 consecutive failures turn it red."""
+    """Cached ComfyUI liveness for the status dot (see _ping_loop)."""
+    _PING["busy"] = bool(busy)
     if busy:
         _PING["ok"], _PING["fails"] = True, 0
-        return True
-    now = time.time()
-    if now - _PING["t"] > 5:
-        _PING["t"] = now
-        try:
-            urllib.request.urlopen(API_URL + "/system_stats", timeout=2).read()
-            _PING["ok"], _PING["fails"] = True, 0
-        except Exception:
-            _PING["fails"] += 1
-            if _PING["fails"] >= 3:
-                _PING["ok"] = False
+    if not _PING["thread"]:
+        _PING["thread"] = True
+        threading.Thread(target=_ping_loop, daemon=True).start()
     return _PING["ok"]
 
 

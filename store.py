@@ -614,8 +614,8 @@ class Store:
                 k += d
                 if not (0 <= k < len(st)):
                     break
-                if self.alive(st[k]):
-                    out.append(st[k])
+                if self.alive(st[k]) and st[k] not in self.missing:
+                    out.append(st[k])       # missing files would prefetch a 404
                     took += 1
         return out
 
