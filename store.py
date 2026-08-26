@@ -603,6 +603,22 @@ class Store:
             self.set_working(st[pos], push=False)
             return st[pos]
 
+    def nav_neighbors(self, span=3):
+        """The next few alive ids either side of the nav pointer (prefetch)."""
+        nav = self.state["nav"]
+        st, pos = nav["stack"], nav["pos"]
+        out = []
+        for d in (-1, 1):
+            k, took = pos, 0
+            while took < span:
+                k += d
+                if not (0 <= k < len(st)):
+                    break
+                if self.alive(st[k]):
+                    out.append(st[k])
+                    took += 1
+        return out
+
     def hist_append(self, i):
         with self.lock:
             if i is None or not self.alive(i):

@@ -1225,6 +1225,10 @@ $('#gridsz').addEventListener('click', () => {
   renderGrid();
 });
 let navBusy = false;
+function prefetchNeighbors(ids) {
+  // warm the browser cache for likely scrub targets (immutable /img)
+  (ids || []).forEach(id => { if (id != null) { const im = new Image(); im.src = imgURL(id); } });
+}
 async function navWI(d) {
   // browser back/forward for the WI (its own stack in state.json, pushed by
   // every pick, never by scrubbing). History (the strip) stays the sparse
@@ -1233,9 +1237,21 @@ async function navWI(d) {
   if (navBusy) return;
   navBusy = true;
   try {
+    const t0 = performance.now();
     const r = await api('winav', {dir: d});
+    const t1 = performance.now();
     if (r.id == null) flash(d < 0 ? 'start of WI history' : 'end of WI history');
     await refresh();
+    const t2 = performance.now();
+    prefetchNeighbors(r.around);
+    const im = document.querySelector('#stagebox img');
+    if (im && !im.complete) {
+      im.addEventListener('load', () => console.log(
+        `navWI: api ${(t1 - t0) | 0}ms, refresh ${(t2 - t1) | 0}ms, img ${(performance.now() - t2) | 0}ms  #${r.id}`),
+        {once: true});
+    } else {
+      console.log(`navWI: api ${(t1 - t0) | 0}ms, refresh ${(t2 - t1) | 0}ms, img cached  #${r.id}`);
+    }
   } finally { navBusy = false; }
 }
 

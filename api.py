@@ -109,14 +109,17 @@ async def serve_static(request):
 
 
 async def serve_image(request):
-    """/img/<id>. File existence is the truth (purged = 404)."""
+    """/img/<id>. File existence is the truth (purged = 404). Ids are never
+    reused and bytes are IMMUTABLE, so the browser may cache forever - the
+    old no-cache made every scrub-to-a-cold-image refetch a multi-MB png
+    (user-felt lag)."""
     i = int(request.match_info["id"])
     f = ctx(request).store.path(i)
     if not f.is_file():
         raise web.HTTPNotFound()
     return web.FileResponse(f, headers={
         "Content-Disposition": f'inline; filename="{i}.png"',
-        "Cache-Control": "no-cache"})
+        "Cache-Control": "public, max-age=31536000, immutable"})
 
 
 # ---------- state & controls ----------
@@ -244,7 +247,7 @@ async def handle_winav(request):
     with store.lock:
         restore_from_image(store, i)
         store.save_state()
-    return ok(id=i)
+    return ok(id=i, around=store.nav_neighbors())
 
 
 async def handle_cwd(request):
