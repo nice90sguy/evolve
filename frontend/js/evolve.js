@@ -1238,7 +1238,8 @@ $('#gc').addEventListener('click', async () => {
       'Those images will show missing-parent placeholders and their recipes can no longer be re-rendered exactly.';
   }
   body += String.fromCharCode(10) + String.fromCharCode(10) +
-    'Nothing is hard-deleted: the Recycle Bin is the final undo, and the journal keeps every record.';
+    'These images leave evolve for good (no placeholders, no tracking). ' +
+    'The files go to the Windows Recycle Bin, not oblivion - recover the bytes from there if you change your mind.';
   openDialog('Empty trash', body, 'Empty trash', async () => {
     const r = await api('empty_trash', {apply: true});
     if (r.error) notice(r.error); else flash(`${r.removed} file(s) \u2192 Recycle Bin`);
