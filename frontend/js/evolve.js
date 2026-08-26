@@ -459,9 +459,12 @@ $('#rescan').addEventListener('click', async () => {
 const MODES = ['evolver', 'loras', 'assets', 'story'];
 const MODE_KEYS = {e: 'evolver', l: 'loras', a: 'assets', s: 'story'};
 let mode = localStorage.getItem('mode') || 'evolver';
+let lastTask = null;          // the last non-A mode of THIS session (Tab's return target)
 let curLoraName = localStorage.getItem('lora:last') || null;
 function setMode(m) {
-  mode = MODES.includes(m) ? m : 'evolver';
+  const next = MODES.includes(m) ? m : 'evolver';
+  if (mode !== 'assets' && next !== mode) lastTask = mode;
+  mode = next;
   localStorage.setItem('mode', mode);
   document.querySelectorAll('#rail .tab[data-mode]').forEach(t =>
     t.classList.toggle('on', t.dataset.mode === mode));
@@ -1323,6 +1326,14 @@ document.addEventListener('keydown', async e => {
     else if (listFor(Sel.target) && Math.abs(d) === 1) { e.preventDefault(); Sel.set(Sel.target, Math.max(0, Math.min(listFor(Sel.target).length - 1, Sel.index + d))); }
   } else if (e.key === 'p' && id != null) {
     act('pin', {id, on: true});   // P pins the selection from ANYWHERE; Del inside Pinned unpins
+  } else if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !gridOn) {
+    // Tab = strict A <-> task toggle (in a form field it keeps its native
+    // focus-move meaning via the typing() guard above): in a task -> A
+    // (plain switch, no reveal - A key does that); in A -> the last task
+    // of this session, or nothing if there is none yet
+    e.preventDefault();
+    if (mode === 'assets') { if (lastTask) setMode(lastTask); }
+    else setMode('assets');
   } else if (!e.ctrlKey && !e.metaKey && !e.altKey && !gridOn && MODE_KEYS[e.key.toLowerCase()]) {
     const m = MODE_KEYS[e.key.toLowerCase()];  // Blender-style: E/L/A/S switch modes;
     if (m === 'assets') revealInPlaces();      // A = REVEAL the selection in its folder
