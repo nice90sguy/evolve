@@ -771,6 +771,14 @@ file reappears (rescan -> `revive {ids}` journal event, toast counts it);
 back from immutable-forever caching to no-cache + Last-Modified 304s
 (swapped bytes must actually show; the earlier lag was the ping, not
 revalidation). Do NOT re-propose sha1-verified identity - rejected.
+**KNOWN LANDMINE (accepted 2026-08-26, may later bite):** after a byte
+swap/revive the record still carries the OLD bytes' `sha1` and `w`/`h` -
+nothing recomputes them. Consequences when it bites: import-dedupe can
+false-match a re-import of the OLD bytes to the id now showing NEW bytes;
+rescan's sha1 fallback can mis-match a stray copy of the old file; the
+Info popup's size row lies if dimensions changed; `is_changed` provenance
+verification in future migrations will disagree with the file. Fix when
+needed: rescan recomputes sha1/w/h on revive or on mtime change.
 
 ## Trash doctrine v2 — BUILT 2026-08-26 (integrity is a WARNING, not a gate)
 
