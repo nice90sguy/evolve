@@ -175,7 +175,7 @@ function gridPeek(start) {
   if (start === true) gridPeekOn = true;
   if (!gridPeekOn) return;
   const gp = $('#gridpeek');
-  const gid = Sel.target === 'grid' ? Sel.id() : null;
+  const gid = (Sel.target === 'grid' || Sel.target === 'abrowse') ? Sel.id() : null;
   if (gid == null) { gp.hidden = true; return; }
   const im = gp.firstElementChild, url = imgURL(gid);
   if (im.src !== url) {
@@ -269,7 +269,7 @@ async function refresh() {
   clearTimeout(pollTimer);
   // 1s while generating (slots fill in as candidates land), 3s idle (cheap;
   // picks up anything another tab or the server did)
-  pollTimer = setTimeout(refresh, S.busy ? 1000 : 3000);
+  pollTimer = setTimeout(refresh, (S.busy || S.scan_busy) ? 1000 : 3000);
 }
 
 function thumb(id, cls) {
@@ -347,7 +347,7 @@ function render() {
   if (S.rescan && S.rescan.ts !== lastRescanTs) {
     lastRescanTs = S.rescan.ts;
     if (S.rescan.missing || S.rescan.moved || S.rescan.imported || S.rescan.revived)
-      toast(`rescan: ${S.rescan.moved} moved, ${S.rescan.imported} imported, ${S.rescan.missing} missing` + (S.rescan.revived ? `, ${S.rescan.revived} revived` : ''),
+      toast(`rescan: ${S.rescan.moved} moved, ${S.rescan.imported} imported, ${S.rescan.missing} missing` + (S.rescan.revived ? `, ${S.rescan.revived} revived` : '') + (S.rescan.skipped && S.rescan.skipped.length ? `, ${S.rescan.skipped.length} skipped (see console)` : ''),
             S.rescan.missing ? 'warn' : '');
   }
   const dtg = $('#deftags');
@@ -398,22 +398,38 @@ function placesIds() {
   return (S.all_ids || []).filter(id => S.paths[id] === cwd);
 }
 let placesKey = '';
+let folded = new Set(JSON.parse(localStorage.getItem('tree:folded') || '[]'));
 function renderPlaces() {
   if (mode !== 'assets' || !S) return;
   const counts = {};
   Object.values(S.paths || {}).forEach(d => { counts[d] = (counts[d] || 0) + 1; });
-  const key = JSON.stringify([S.cwd, S.dirs, counts, placesIds(), S.missing]);
+  // the open folder's ancestors are never folded (reveal must be visible)
+  S.cwd.split('/').slice(0, -1).reduce((acc, seg) => { const p2 = acc ? acc + '/' + seg : seg; folded.delete(p2); return p2; }, '');
+  const key = JSON.stringify([S.cwd, S.dirs, counts, placesIds(), S.missing, [...folded]]);
   if (key === placesKey) { return; }
   placesKey = key;
   const tb = $('#treebody');
   tb.innerHTML = '';
-  (S.dirs || []).forEach(d => {
+  const dirs = S.dirs || [];
+  const hasKids = d => dirs.some(x => x.startsWith(d + '/'));
+  const hiddenBy = d => d.split('/').slice(0, -1).some((seg, k, arr) => folded.has(arr.slice(0, k + 1).join('/')));
+  dirs.forEach(d => {
+    if (d !== '.trash' && hiddenBy(d)) return;   // inside a folded ancestor
     const n = document.createElement('div');
     const depth = d === '.trash' ? 0 : d.split('/').length - 1;
     n.className = 'dnode' + (d === S.cwd ? ' on' : '') + (d === '.trash' ? ' trash' : '');
     n.style.paddingLeft = (8 + depth * 14) + 'px';
-    n.innerHTML = `<span>${d === '.trash' ? 'trash' : d.split('/').pop()}</span><span class="cnt">${counts[d] || 0}</span>`;
+    const kids = d !== '.trash' && hasKids(d);
+    n.innerHTML = `<span class="caret" title="${kids ? 'fold / unfold' : ''}">${kids ? (folded.has(d) ? '\u25b8' : '\u25be') : ''}</span>` +
+      `<span>${d === '.trash' ? 'trash' : d.split('/').pop()}</span><span class="cnt">${counts[d] || 0}</span>`;
     n.title = d;
+    n.querySelector('.caret').addEventListener('click', e => {
+      if (!kids) return;
+      e.stopPropagation();
+      if (folded.has(d)) folded.delete(d); else folded.add(d);
+      localStorage.setItem('tree:folded', JSON.stringify([...folded]));
+      placesKey = ''; renderPlaces();
+    });
     n.addEventListener('click', () => act('cwd', {dir: d}));
     n.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); n.classList.add('over'); });
     n.addEventListener('dragleave', () => n.classList.remove('over'));
@@ -428,6 +444,8 @@ function renderPlaces() {
   const ids = placesIds();
   $('#abcount').textContent = ids.length;
   const g = $('#abgrid');
+  g.classList.toggle('big', localStorage.getItem('size:abrowse') === '1');
+  $('#absz').textContent = localStorage.getItem('size:abrowse') === '1' ? '-' : '+';
   if (g.contains(document.activeElement)) return;
   g.innerHTML = '';
   ids.forEach((id, k) => {
@@ -445,6 +463,10 @@ function renderPlaces() {
     g.appendChild(im);
   });
 }
+$('#absz').addEventListener('click', () => {
+  localStorage.setItem('size:abrowse', localStorage.getItem('size:abrowse') === '1' ? '0' : '1');
+  placesKey = ''; renderPlaces();
+});
 $('#mkdir').addEventListener('click', () => {
   const name = prompt('new folder under "' + (S ? S.cwd : '') + '" (name only, no slashes):');
   if (!name || !S) return;
@@ -452,11 +474,9 @@ $('#mkdir').addEventListener('click', () => {
   api('mkdir', {dir: d}).then(r => { if (r.error) notice(r.error); else act('cwd', {dir: r.dir}); });
 });
 $('#rescan').addEventListener('click', async () => {
-  flash('rescanning…');
   const r = await api('rescan', {});
   if (r.error) { notice(r.error); return; }
-  toast(`rescan: ${r.moved} moved, ${r.imported} imported, ${r.missing} missing` +
-    (r.revived ? `, ${r.revived} revived` : '') + (r.skipped.length ? `, ${r.skipped.length} skipped` : ''));
+  flash('rescanning… (progress in the status bar; a toast reports the result)');
   refresh();
 });
 { // tree | browser divider in A mode
@@ -979,7 +999,12 @@ function statusBar() {
     p.style.visibility = 'visible';
     p.max = S.busy.total; p.value = S.busy.done;
     t.textContent = S.busy.done + '/' + S.busy.total;
+  } else if (S.scan_busy) {                     // a rescan/import in progress
+    p.style.visibility = 'visible';
+    p.max = Math.max(1, S.scan_busy.total); p.value = S.scan_busy.done;
+    t.textContent = `rescan ${S.scan_busy.phase} ${S.scan_busy.done}/${S.scan_busy.total}`;
   } else { p.style.visibility = 'hidden'; t.textContent = ''; }
+  $('#rescan').disabled = !!S.scan_busy;
 }
 
 { // controls|output divider inside the Generate panel (height-adjustable controls)
@@ -1338,14 +1363,14 @@ const typing = e => ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName);
 document.addEventListener('keydown', async e => {
   if (typing(e)) return;
   const id = Sel.id();
-  if (gridOn) {
+  if (gridOn || (mode === 'assets' && Sel.target === 'abrowse')) {   // a GRID (modal or A-browser)
     if (e.key === ' ') {
       e.preventDefault();
-      if (!e.repeat) gridPeek(true);          // hold = full-size preview
+      if (!e.repeat) gridPeek(true);          // hold = actual-size preview
       return;
     }
-    if (!e.key.startsWith('Arrow')) return;   // modal: arrows browse, Esc closes
-    queueMicrotask(() => gridPeek());         // preview follows the selection while held
+    if (gridOn && !e.key.startsWith('Arrow')) return;   // modal: arrows browse, Esc closes
+    if (e.key.startsWith('Arrow')) queueMicrotask(() => gridPeek());   // preview follows the selection
   }
   if (e.key === ' ') {                       // hold = the stage shows the selection; on the
     e.preventDefault();                      // preview image itself: shows its PARENT (provenance)
@@ -1384,11 +1409,12 @@ document.addEventListener('keydown', async e => {
     else if (Sel.target === 'pin') { e.preventDefault(); Sel.set('pin', Math.max(0, Math.min(S.pins.length - 1, Sel.index + Math.sign(d)))); }
     else if (Sel.target === 'working' && Math.abs(d) === 1) { e.preventDefault(); navWI(d); }
     else if (Sel.target === 'ref' && Math.abs(d) === 1) { Sel.set('ref', Math.max(0, Math.min(2, Sel.index + d))); }
-    else if (Sel.target === 'grid' && listFor('grid')) {   // a GRID: up/down move by a row
+    else if ((Sel.target === 'grid' || Sel.target === 'abrowse') && listFor(Sel.target)) {   // a GRID: up/down by a row
       e.preventDefault();
-      const cols = getComputedStyle($('#gridbody')).gridTemplateColumns.split(' ').length || 1;
+      const box = Sel.target === 'grid' ? $('#gridbody') : $('#abgrid');
+      const cols = getComputedStyle(box).gridTemplateColumns.split(' ').length || 1;
       const step = {ArrowLeft: -1, ArrowRight: 1, ArrowUp: -cols, ArrowDown: cols}[e.key];
-      Sel.set('grid', Math.max(0, Math.min(listFor('grid').length - 1, Sel.index + step)));
+      Sel.set(Sel.target, Math.max(0, Math.min(listFor(Sel.target).length - 1, Sel.index + step)));
     }
     else if (listFor(Sel.target) && Math.abs(d) === 1) { e.preventDefault(); Sel.set(Sel.target, Math.max(0, Math.min(listFor(Sel.target).length - 1, Sel.index + d))); }
   } else if (e.key === 'p' && id != null) {

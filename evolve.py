@@ -55,11 +55,17 @@ def main():
         raise SystemExit(f"{len(stranded)} archived image(s) still live in images/ "
                          "(pre-Places layout): run  python tools/migrate_projects.py "
                          f"--root {root} --places  first")
-    r = store.rescan()
-    print(f"rescan: {r['moved']} moved, {r['imported']} imported, "
-          f"{r['missing']} missing" + (f", {len(r['skipped'])} skipped" if r["skipped"] else ""))
-    for line in r["skipped"][:10]:
-        print("  " + line)
+    import threading
+
+    def startup_rescan():
+        def bar(done, total, phase):
+            print(f"\r  rescan {phase} {done}/{total}\x1b[K", end="", flush=True)
+        r = store.rescan(progress=bar)
+        print(f"\rrescan: {r['moved']} moved, {r['imported']} imported, {r['missing']} missing, "
+              f"{r['revived']} revived" + (f", {len(r['skipped'])} skipped" if r["skipped"] else ""))
+        for line in r["skipped"][:10]:
+            print("  " + line)
+    threading.Thread(target=startup_rescan, daemon=True).start()   # never block the UI
     try:
         lora.load_loras()            # fail fast on a pre-family / pre-rename loras.json
     except lora.LorasFormatError as e:

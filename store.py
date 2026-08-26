@@ -76,6 +76,7 @@ class Store:
         self.images = {}          # id -> record (dir, file, tags, description, purged?)
         self.missing = set()      # journaled ids whose file was not found by rescan
         self.last_rescan = None
+        self.scan_busy = None     # {done, total, phase} while a rescan runs
         self.history = []
         self.next_id = 1
         self._load()
@@ -527,92 +528,112 @@ class Store:
 
     # ---------- rescan: reconcile the tree with the journal ----------
 
-    def rescan(self):
-        """Walk the tree. Known ids found elsewhere -> journaled moves
-        (external Explorer moves become history); files the app has never
-        seen -> imported IN PLACE (add them freely - "evolve will import
-        them so you can track them properly"); journaled images with no
-        file -> missing (placeholders; the journal never forgets)."""
-        with self.lock:
+    def rescan(self, progress=None):
+        """Walk the tree and reconcile it with the journal. Known ids found
+        elsewhere -> journaled moves (Explorer moves become history);
+        files the app has never seen -> imported IN PLACE ("add files
+        freely, evolve will import them so you can track them properly");
+        a purged record whose id-named file reappears -> revived; a
+        journaled image with no file -> missing (placeholders; the journal
+        never forgets). The walk and the hashing run WITHOUT the lock (a
+        big drop must not freeze the UI); only the bookkeeping takes it.
+        progress(done, total, phase) is called as it goes."""
+        self.scan_busy = {"done": 0, "total": 0, "phase": "walking"}
+
+        def tick(done, total, phase):
+            self.scan_busy = {"done": done, "total": total, "phase": phase}
+            if progress:
+                progress(done, total, phase)
+
+        try:
             report = {"moved": 0, "imported": 0, "missing": 0, "revived": 0, "skipped": []}
-            found = {}                     # id -> (dir, file)
-            unknown = []
-            by_sha = None
-            for p in sorted(self.dir.rglob("*")):
-                if not (p.is_file() and p.suffix.lower() in IMAGE_EXTS):
-                    continue
-                rel = p.relative_to(self.dir)
-                d = valid_dir(rel.parent.as_posix()) if rel.parent.as_posix() != "." else None
-                if d is None:
-                    continue
-                m = _ID_NAME.fullmatch(p.name)
+            with self.lock:
+                known = set(self.images)
+                by_sha = {r["sha1"]: j for j, r in self.images.items()
+                          if r.get("sha1") and self.alive(j)}
+            files = []
+            for q in self.dir.rglob("*"):
+                if q.is_file() and q.suffix.lower() in IMAGE_EXTS:
+                    rel = q.relative_to(self.dir)
+                    d = valid_dir(rel.parent.as_posix()) if rel.parent.as_posix() != "." else None
+                    if d is not None:
+                        files.append((q, d))
+            total = len(files)
+            found, unknown = {}, []
+            for n, (q, d) in enumerate(files, 1):
+                m = _ID_NAME.fullmatch(q.name)
                 i = int(m.group(1)) if m else None
-                if i is not None and i in self.images and i not in found:
-                    found[i] = (d, p.name)     # filename = identity, by design:
-                    continue                   # swapping bytes in is a user power
-                if by_sha is None:
-                    by_sha = {r["sha1"]: j for j, r in self.images.items()
-                              if r.get("sha1") and self.alive(j)}
-                j = by_sha.get(sha1_of(p.read_bytes()))
-                if j is not None and j not in found:
-                    found[j] = (d, p.name)
+                if i is not None and i in known and i not in found:
+                    found[i] = (d, q.name)     # filename = identity, by design
                 else:
-                    unknown.append((p, d))
-            moves = []
-            revived = []
-            for i, (d, file) in found.items():
-                r = self.images[i]
-                if r.get("purged"):            # its file is back (or a stand-in
-                    r["purged"] = False        # wearing its name): the record
-                    revived.append(i)          # revives, lineage and words intact
-                if (r["dir"], r["file"]) != (d, file):
-                    r["dir"], r["file"] = d, file
-                    if d != TRASH:
-                        r["home"] = d
-                    moves.append({"id": i, "to": d, "file": file})
-                self.missing.discard(i)
-            if moves:
-                self._append({"t": "move", "moves": moves, "source": "rescan"})
-                report["moved"] = len(moves)
-            if revived:
-                self._append({"t": "revive", "ids": sorted(revived)})
-                report["revived"] = len(revived)
-            for p, d in unknown:
+                    j = by_sha.get(sha1_of(q.read_bytes()))
+                    if j is not None and j not in found:
+                        found[j] = (d, q.name)
+                    else:
+                        unknown.append((q, d))
+                if n % 25 == 0 or n == total:
+                    tick(n, total, "matching")
+            with self.lock:
+                moves, revived = [], []
+                for i, (d, file) in found.items():
+                    r = self.images.get(i)
+                    if r is None:
+                        continue
+                    if r.get("purged"):        # its file is back (or a stand-in
+                        r["purged"] = False    # wearing its name): the record
+                        revived.append(i)      # revives, lineage and words intact
+                    if (r["dir"], r["file"]) != (d, file):
+                        r["dir"], r["file"] = d, file
+                        if d != TRASH:
+                            r["home"] = d
+                        moves.append({"id": i, "to": d, "file": file})
+                    self.missing.discard(i)
+                if moves:
+                    self._append({"t": "move", "moves": moves, "source": "rescan"})
+                    report["moved"] = len(moves)
+                if revived:
+                    self._append({"t": "revive", "ids": sorted(revived)})
+                    report["revived"] = len(revived)
+            for n, (q, d) in enumerate(unknown, 1):
                 try:
-                    if p.suffix.lower() == ".png":
-                        with open(str(p), "rb") as f:
-                            data = f.read()
+                    data = q.read_bytes()
+                    if q.suffix.lower() == ".png":
                         img, raw = open_bytes(data)
-                        if img.mode == "RGB":       # adopt IN PLACE, no rewrite
-                            i = self.next_id
-                            self.next_id += 1
-                            rec = {"t": "image", "id": i, "dir": d, "file": p.name,
-                                   "home": d if d != TRASH else DEFAULT_DIR,
-                                   "source": "scan", "w": img.width, "h": img.height,
-                                   "sha1": sha1_of(data), "recipe": glean_recipe(raw),
-                                   "parents": [], "tags": self.birth_tags(),
-                                   "description": ""}
-                            rec["description"] = ((rec["recipe"] or {}).get("prompt") or "").strip()
-                            self._append(rec)
-                            self.images[i] = rec
+                        if img.mode == "RGB":   # adopt IN PLACE, no rewrite
+                            with self.lock:
+                                i = self.next_id
+                                self.next_id += 1
+                                recipe = glean_recipe(raw)
+                                rec = {"t": "image", "id": i, "dir": d, "file": q.name,
+                                       "home": d if d != TRASH else DEFAULT_DIR,
+                                       "source": "scan", "w": img.width, "h": img.height,
+                                       "sha1": sha1_of(data), "recipe": recipe,
+                                       "parents": [], "tags": self.birth_tags(),
+                                       "description": ((recipe or {}).get("prompt") or "").strip()}
+                                self._append(rec)
+                                self.images[i] = rec
                             report["imported"] += 1
                             continue
                     # non-png / alpha: a flattened png copy; original reported
-                    data = p.read_bytes()
                     _, new = self.import_bytes(data, source="scan", dir=d)
                     if new:
                         report["imported"] += 1
-                    report["skipped"].append(f"{p.relative_to(self.dir).as_posix()} "
+                    report["skipped"].append(f"{q.relative_to(self.dir).as_posix()} "
                                              "(converted copy made; original left in place)")
                 except Exception as e:
-                    report["skipped"].append(f"{p.relative_to(self.dir).as_posix()}: "
+                    report["skipped"].append(f"{q.relative_to(self.dir).as_posix()}: "
                                              f"{type(e).__name__}: {e}")
-            self.missing = {i for i in self.alive_ids() if i not in found
-                            and not self.path(i).is_file()}
-            report["missing"] = len(self.missing)
-            report["ts"] = time.strftime("%H:%M:%S")
-            self.last_rescan = report
+                if n % 10 == 0 or n == len(unknown):
+                    tick(n, len(unknown), "importing")
+            with self.lock:
+                self.missing = {i for i in self.alive_ids() if i not in found
+                                and not self.path(i).is_file()}
+                report["missing"] = len(self.missing)
+                report["ts"] = time.strftime("%H:%M:%S")
+                self.last_rescan = report
             return report
+        finally:
+            self.scan_busy = None
 
     # ---------- live state ----------
 
@@ -787,7 +808,7 @@ class Store:
                     "all_ids": alive,
                     "archived": self.archived_ids(),
                     "missing": sorted(self.missing),
-                    "rescan": self.last_rescan,
+                    "rescan": self.last_rescan, "scan_busy": self.scan_busy,
                     "tags": {i: self.images[i]["tags"] for i in alive},
                     "descriptions": {i: self.images[i]["description"] for i in alive
                                      if self.images[i]["description"]},

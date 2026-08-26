@@ -34,6 +34,9 @@ main{flex:1;display:grid;grid-template-rows:1fr;min-width:0;min-height:0}
 #asplit:hover,#asplit.drag{background:var(--acc)}
 #abgrid{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;padding:12px;align-content:start}
 #abgrid img{width:100%;aspect-ratio:1;object-fit:cover;border:2px solid transparent;border-radius:3px;cursor:pointer}
+#abgrid.big{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+.dnode .caret{width:12px;flex:none;color:var(--dim);font-size:10px;text-align:center}
+.dnode .caret:hover{color:var(--fg)}
 #abgrid .gonebox{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border:1px dashed var(--line);border-radius:3px;color:var(--dim);font-size:11px;text-align:center;padding:4px}
 #top{min-width:0;border-top:1px solid var(--line);background:var(--bg)}
 .car{padding:2px 10px;min-width:0;max-width:100%}

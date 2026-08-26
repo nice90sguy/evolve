@@ -278,11 +278,15 @@ async def handle_mkdir(request):
 
 
 async def handle_rescan(request):
-    """Reconcile the tree with the journal (Explorer edits become history;
-    alien files are imported in place)."""
+    """Start a background rescan (Explorer edits become history; alien files
+    are imported in place). Progress = snapshot.scan_busy; the result lands
+    in snapshot.rescan (the UI toasts it)."""
     store = ctx(request).store
-    r = await asyncio.get_event_loop().run_in_executor(None, store.rescan)
-    return ok(**r)
+    if store.scan_busy:
+        return error("a rescan is already running", 409)
+    import threading
+    threading.Thread(target=store.rescan, daemon=True).start()
+    return ok(started=True)
 
 
 async def handle_describe(request):
