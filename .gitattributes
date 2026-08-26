@@ -1,0 +1,18 @@
+# Line endings: the repo is LF everywhere, on every platform. This overrides
+# the machine-wide core.autocrlf=true that Git for Windows installs, which
+# otherwise warns "LF will be replaced by CRLF" on every commit.
+* text=auto eol=lf
+
+# Binary content never gets touched
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.mp4 binary
+*.safetensors binary
+*.pdf binary
+*.pptx binary
+*.ico binary
+*.woff binary
+*.woff2 binary
