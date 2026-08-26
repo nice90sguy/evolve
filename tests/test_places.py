@@ -59,6 +59,11 @@ def main():
         assert r["moved"] == 1 and r["imported"] == 2 and r["skipped"], r
         aliens = [i for i in st.alive_ids() if st.images[i]["source"] == "scan"]
         assert len(aliens) == 2 and all(st.image_dir(i) == "scenes" for i in aliens)
+        conv = next(i for i in aliens if st.images[i].get("source_sha1"))   # the jpg's converted copy
+        assert st.images[conv]["file"].endswith(".png")
+        r = st.rescan()                                   # the jpg original is recognised, not re-imported
+        assert r["imported"] == 0 and st.images[conv]["file"] == f"{conv}.png"
+        assert (rt / "scenes" / "alien2.jpg").is_file()   # original left in place
         # WI browser-back: picks push (forward branch truncated), scrub moves
         st.set_working(A); st.set_working(B); st.set_working(kid)
         assert st.state["nav"]["stack"][-3:] == [A, B, kid]

@@ -32,6 +32,7 @@ from controls import CONTROLS, sanitize_controls
 from image_file import (IMAGE_EXTS, flattened_rgb, link_or_copy, open_bytes,
                         sha1_of, text_chunks, write_png)
 from image_meta import evolve_chunk, glean_recipe
+from PIL import Image
 from project import clean_tags, load_settings
 
 TABS = ("create", "derive", "camera")
@@ -98,15 +99,27 @@ class Store:
                     ev["dir"] = ev.get("dir") or DEFAULT_DIR
                     ev["file"] = ev.get("file") or f"{ev['id']}.png"
                     ev["home"] = ev.get("home") or ev["dir"]
+                    ev["fresh"] = bool(ev.get("fresh"))
+                    ev.setdefault("source_sha1", None)
                     if ev.pop("archived", False) or LEGACY_ARCHIVED_WORD in tags:
                         ev["dir"] = TRASH        # legacy bit/word -> the trash place
                     self.images[ev["id"]] = ev
                     self.next_id = max(self.next_id, ev["id"] + 1)
+                elif t == "touch":
+                    for i in ev["ids"]:
+                        if i in self.images:
+                            self.images[i]["fresh"] = False
+                elif t == "rehash":
+                    r = self.images.get(ev["id"])
+                    if r:
+                        r["sha1"] = ev.get("sha1", r.get("sha1"))
+                        r["source_sha1"] = ev.get("source_sha1", r.get("source_sha1"))
                 elif t == "tag":
                     add, rm = ev.get("add") or [], ev.get("remove") or []
                     for i in ev.get("ids", []):
                         r = self.images.get(i)
                         if r:
+                            r["fresh"] = False
                             self._apply_tags(r, add, rm)
                             if LEGACY_ARCHIVED_WORD in add:
                                 r["dir"] = TRASH
@@ -124,6 +137,8 @@ class Store:
                     for m in ev["moves"]:
                         r = self.images.get(m["id"])
                         if r:
+                            if ev.get("source") != "rescan":
+                                r["fresh"] = False
                             r["dir"] = m["to"]
                             if "file" in m:
                                 r["file"] = m["file"]
@@ -132,11 +147,14 @@ class Store:
                 elif t == "describe":
                     r = self.images.get(ev["id"])
                     if r:
+                        r["fresh"] = False
                         r["description"] = ev.get("description") or ""
                 elif t == "working" and ev["id"] is not None:
                     if ev["id"] not in self.history:      # legacy (pre-v2)
                         self.history.append(ev["id"])
                 elif t == "hist" and ev["id"] is not None:
+                    if ev["id"] in self.images:
+                        self.images[ev["id"]]["fresh"] = False     # bred from = touched
                     if not self.history or self.history[-1] != ev["id"]:
                         self.history.append(ev["id"])
                 elif t == "purge":
@@ -282,6 +300,7 @@ class Store:
                 moves.append({"id": i, "to": to})
             if moves:
                 self._append({"t": "move", "moves": moves})
+                self._unfresh([m["id"] for m in moves])
             return [m["id"] for m in moves]
 
     # ---------- trash (a place) ----------
@@ -365,6 +384,33 @@ class Store:
 
     # ---------- tags & words ----------
 
+    def is_fresh(self, i):
+        """A spawn nobody has touched yet: born of a round and not since
+        made the WI, referenced, pinned, tagged, described, moved, trashed
+        by hand or bred from. Fresh candidates are what a round throws
+        away before it runs."""
+        return self.alive(i) and bool(self.images[i].get("fresh"))
+
+    def _unfresh(self, ids):
+        """In-memory clear for mutations whose own journal event implies
+        the touch on replay (tag / describe / move)."""
+        for i in ids:
+            r = self.images.get(i)
+            if r:
+                r["fresh"] = False
+
+    def touch(self, ids):
+        """Clear `fresh` (journaled once per image). Mutations that already
+        journal (tag/describe/move/hist) clear it on replay; this is for
+        the state-only ones: becoming the WI, landing in ref0/a ref."""
+        with self.lock:
+            todo = [i for i in ids if i is not None and self.is_fresh(i)]
+            for i in todo:
+                self.images[i]["fresh"] = False
+            if todo:
+                self._append({"t": "touch", "ids": todo})
+            return todo
+
     def tags(self, i):
         return self.images[i]["tags"] if self.alive(i) else []
 
@@ -427,6 +473,7 @@ class Store:
             if touched:
                 self._append({"t": "tag", "ids": touched, "add": add, "remove": remove,
                               "cascade": bool(cascade), "from": base})
+                self._unfresh(touched)
             return touched
 
     def describe(self, i, text):
@@ -437,6 +484,7 @@ class Store:
             if self.images[i]["description"] != text:
                 self.images[i]["description"] = text
                 self._append({"t": "describe", "id": i, "description": text})
+                self._unfresh([i])
             return True
 
     def ancestors_closure(self, ids):
@@ -475,9 +523,12 @@ class Store:
 
     def add_image(self, img, source, recipe=None, parents=None, sha1=None,
                   chunks=None, inputs=None, tags=None, description=None, ts=None,
-                  dir=None):
+                  dir=None, fresh=False, source_sha1=None):
         """Persist a PIL image (already RGB) under a fresh id at ONE place.
-        sha1 is computed if not given (rescan's fallback identity)."""
+        `sha1` is the STORE FILE's bytes (always computed - rescan's
+        identity fallback); `source_sha1` is the ORIGINAL's bytes when this
+        is a conversion (import-dedupe; "already converted" for rescan).
+        fresh=True marks a round's spawn (see is_fresh)."""
         with self.lock:
             i = self.next_id
             self.next_id += 1
@@ -491,12 +542,14 @@ class Store:
             all_chunks["evolve"] = evolve_chunk(self.name, i, source, recipe, inputs)
             file = f"{i}.png"
             write_png(img, self.dir / d / file, all_chunks)
-            if sha1 is None:
-                sha1 = sha1_of((self.dir / d / file).read_bytes())
+            if sha1 is not None and source_sha1 is None:
+                source_sha1 = sha1                 # legacy call shape: the given hash was the original's
+            sha1 = sha1_of((self.dir / d / file).read_bytes())
             if description is None:
                 description = ((recipe or {}).get("prompt") or "").strip()
             rec = {"t": "image", "id": i, "dir": d, "file": file, "home": d,
-                   "source": source, "w": img.width, "h": img.height, "sha1": sha1,
+                   "source": source, "w": img.width, "h": img.height,
+                   "sha1": sha1, "source_sha1": source_sha1, "fresh": bool(fresh),
                    "recipe": recipe, "parents": parents or [],
                    "tags": clean_tags(tags or []), "description": description}
             if ts:
@@ -506,8 +559,9 @@ class Store:
             return i
 
     def find_sha1(self, sha1):
+        """An alive record whose store file OR whose original had these bytes."""
         for i, r in self.images.items():
-            if r.get("sha1") == sha1 and self.alive(i):
+            if self.alive(i) and (r.get("sha1") == sha1 or r.get("source_sha1") == sha1):
                 return i
         return None
 
@@ -524,8 +578,9 @@ class Store:
         img, raw = open_bytes(data)
         recipe = glean_recipe(raw)
         keep = {k: v for k, v in raw.items() if k != "evolve"}
-        i = self.add_image(flattened_rgb(img), source, recipe=recipe, sha1=sha1, chunks=keep,
-                           tags=self.birth_tags() + list(tags or []), dir=dir)
+        i = self.add_image(flattened_rgb(img), source, recipe=recipe, chunks=keep,
+                           tags=self.birth_tags() + list(tags or []), dir=dir,
+                           source_sha1=sha1)
         return i, True
 
     # ---------- rescan: reconcile the tree with the journal ----------
@@ -553,6 +608,8 @@ class Store:
                 known = set(self.images)
                 by_sha = {r["sha1"]: j for j, r in self.images.items()
                           if r.get("sha1") and self.alive(j)}
+                by_source = {r["source_sha1"]: j for j, r in self.images.items()
+                             if r.get("source_sha1") and self.alive(j)}
             files = []
             for q in self.dir.rglob("*"):
                 if q.is_file() and q.suffix.lower() in IMAGE_EXTS:
@@ -561,20 +618,26 @@ class Store:
                     if d is not None:
                         files.append((q, d))
             total = len(files)
-            found, unknown = {}, []
-            for n, (q, d) in enumerate(files, 1):
+            found, unknown, originals = {}, [], []
+            rest = []
+            for q, d in files:                 # pass 1: id-named pngs are identity, by design
                 m = _ID_NAME.fullmatch(q.name)
                 i = int(m.group(1)) if m else None
                 if i is not None and i in known and i not in found:
-                    found[i] = (d, q.name)     # filename = identity, by design
+                    found[i] = (d, q.name)
                 else:
-                    j = by_sha.get(sha1_of(q.read_bytes()))
-                    if j is not None and j not in found:
-                        found[j] = (d, q.name)
-                    else:
-                        unknown.append((q, d))
-                if n % 25 == 0 or n == total:
-                    tick(n, total, "matching")
+                    rest.append((q, d))
+            for n, (q, d) in enumerate(rest, 1):   # pass 2: everything else, by content
+                h = sha1_of(q.read_bytes())
+                j = by_sha.get(h)
+                if j is not None and j not in found and q.suffix.lower() == ".png":
+                    found[j] = (d, q.name)     # a renamed store png
+                elif h in by_source or (j is not None and q.suffix.lower() != ".png"):
+                    originals.append((q, d, by_source.get(h, j)))   # already converted: skip
+                else:
+                    unknown.append((q, d))
+                if n % 25 == 0 or n == len(rest):
+                    tick(n, len(rest), "matching")
             with self.lock:
                 moves, revived = [], []
                 for i, (d, file) in found.items():
@@ -596,6 +659,40 @@ class Store:
                 if revived:
                     self._append({"t": "revive", "ids": sorted(revived)})
                     report["revived"] = len(revived)
+                # legacy repair: the one-hash era let an ORIGINAL (webp/jpg)
+                # claim its converted record. Records must point at pngs.
+                for q, d, j in originals:
+                    r = self.images.get(j)
+                    if r is None or not self.alive(j):
+                        continue
+                    if not r.get("source_sha1"):
+                        r["source_sha1"] = r["sha1"] if r["file"].lower().endswith(".png") else None
+                    if not r["file"].lower().endswith(".png"):
+                        twin = self.dir / r["dir"] / f"{j}.png"
+                        if not twin.is_file():
+                            twin = self.dir / d / f"{j}.png"
+                        if not twin.is_file():
+                            with Image.open(q) as im:
+                                im.load()
+                                ch = {k: v for k, v in text_chunks(im).items() if k != "evolve"}
+                                ch["evolve"] = evolve_chunk(self.name, j, r["source"], r.get("recipe"), {})
+                                twin.parent.mkdir(parents=True, exist_ok=True)
+                                write_png(flattened_rgb(im), twin, ch)
+                            report["skipped"].append(f"#{j}: re-converted from {q.name}")
+                        r["source_sha1"] = sha1_of(q.read_bytes())
+                        r["dir"], r["file"] = twin.parent.relative_to(self.dir).as_posix(), twin.name
+                        r["sha1"] = sha1_of(twin.read_bytes())
+                        self._append({"t": "move", "moves": [{"id": j, "to": r["dir"], "file": r["file"]}],
+                                      "source": "repair"})
+                        self._append({"t": "rehash", "id": j, "sha1": r["sha1"],
+                                      "source_sha1": r["source_sha1"]})
+                        report["moved"] += 1
+                    elif r.get("sha1") == sha1_of(q.read_bytes()):
+                        # legacy: sha1 held the original's bytes; rehash to the store file
+                        r["source_sha1"] = r["sha1"]
+                        r["sha1"] = sha1_of(self.path(j).read_bytes()) if self.path(j).is_file() else r["sha1"]
+                        self._append({"t": "rehash", "id": j, "sha1": r["sha1"],
+                                      "source_sha1": r["source_sha1"]})
             for n, (q, d) in enumerate(unknown, 1):
                 try:
                     data = q.read_bytes()
@@ -609,7 +706,8 @@ class Store:
                                 rec = {"t": "image", "id": i, "dir": d, "file": q.name,
                                        "home": d if d != TRASH else DEFAULT_DIR,
                                        "source": "scan", "w": img.width, "h": img.height,
-                                       "sha1": sha1_of(data), "recipe": recipe,
+                                       "sha1": sha1_of(data), "source_sha1": None, "fresh": False,
+                                       "recipe": recipe,
                                        "parents": [], "tags": self.birth_tags(),
                                        "description": ((recipe or {}).get("prompt") or "").strip()}
                                 self._append(rec)
@@ -672,6 +770,7 @@ class Store:
             if i is not None and not self.alive(i):
                 raise ValueError(f"no such image {i}")
             self.state["working"] = i
+            self.touch([i])
             if push and i is not None:
                 nav = self.state["nav"]
                 st, pos = nav["stack"], nav["pos"]
@@ -749,34 +848,16 @@ class Store:
         c["refs"] = [None if r in ids else r for r in c["refs"]]
         self.history = [h for h in self.history if h not in ids]
 
-    def place_slot(self, i, index):
-        with self.lock:
-            c = self.cands()
-            for lst in self.state["candidates"].values():
-                if i in lst:
-                    lst.remove(i)
-            if self.has(i, PINNED):
-                self.tag([i], remove=[PINNED])
-            if index < len(c):
-                c[index] = i
-            else:
-                c.append(i)
-            del c[self.state["slots"]:]
-            self.save_state()
-
     def pin(self, i, on):
-        """P is THE keep decision: the word `pinned` (pinning restores from
-        the trash - pinned => not archived)."""
+        """Pinning is ONE thing: the word `pinned` (plus the standing rule
+        pinned => not in the trash, so it restores). No eviction from
+        Output, no exclusivity - a pinned image may sit in a slot."""
         with self.lock:
             if not self.alive(i):
                 return
             if on:
-                for lst in self.state["candidates"].values():
-                    if i in lst:
-                        lst.remove(i)
                 self.restore([i])
                 self.tag([i], add=[PINNED])
-                self.save_state()
             else:
                 self.tag([i], remove=[PINNED])
 
@@ -807,7 +888,7 @@ class Store:
 
     def meta(self, i):
         r = self.images[i]
-        return {"id": i, "w": r["w"], "h": r["h"], "source": r["source"],
+        return {"id": i, "w": r["w"], "h": r["h"], "source": r["source"], "fresh": self.is_fresh(i),
                 "ts": r.get("ts"), "recipe": r.get("recipe"),
                 "parents": r.get("parents"), "tags": list(r["tags"]),
                 "description": r.get("description") or "",
@@ -832,6 +913,7 @@ class Store:
             return {"root_name": self.name,
                     "all_ids": alive,
                     "archived": self.archived_ids(),
+                    "fresh": [i for i in alive if self.images[i].get("fresh")],
                     "missing": sorted(self.missing),
                     "rescan": self.last_rescan, "scan_busy": self.scan_busy,
                     "tags": {i: self.images[i]["tags"] for i in alive},

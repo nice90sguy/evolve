@@ -33,7 +33,7 @@ const Sel = (() => {
     const key = cur.target + ':' + cur.index + ':' + id();
     if (e0) {
       e0.classList.add('focus');
-      if (e0.tagName === 'IMG' && key !== lastApplied) e0.scrollIntoView({inline: 'nearest', block: 'nearest'});
+      if ((e0.tagName === 'IMG' || e0.classList.contains('th')) && key !== lastApplied) e0.scrollIntoView({inline: 'nearest', block: 'nearest'});
     }
     lastApplied = key;
     const i = id();
@@ -59,7 +59,7 @@ const Sel = (() => {
     get target() { return cur.target; }, get index() { return cur.index; }});
 })();
 // where imports land when nothing is selected
-const selTarget = () => Sel.target === 'none' ? {target: 'working', index: 0} : Sel.get();
+const selTarget = () => (Sel.target === 'none' || Sel.target === 'slot') ? {target: 'working', index: 0} : Sel.get();
 let lastSelId = null;
 let lastRescanTs = null;         // the last selected image id, app-global (mode switches keep it)
 let pollTimer = null;
@@ -74,7 +74,8 @@ const I = {
   copy: 'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z',
   done: 'M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z',
   close: 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z',
-  grid: 'M3 3v8h8V3H3zm6 6H5V5h4v4zm-6 4v8h8v-8H3zm6 6H5v-4h4v4zm4-16v8h8V3h-8zm6 6h-4V5h4v4zm-6 4v8h8v-8h-8zm6 6h-4v-4h4v4z'
+  grid: 'M3 3v8h8V3H3zm6 6H5V5h4v4zm-6 4v8h8v-8H3zm6 6H5v-4h4v4zm4-16v8h8V3h-8zm6 6h-4V5h4v4zm-6 4v8h8v-8h-8zm6 6h-4v-4h4v4z',
+  pin: 'M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z'
 };
 const icon = (d, sz) => `<svg viewBox="0 0 24 24" width="${sz || 18}" height="${sz || 18}" fill="currentColor" aria-hidden="true"><path d="${d}"/></svg>`;
 const imgURL = id => location.origin + '/img/' + id;
@@ -134,7 +135,7 @@ function renderWords() {
 // generic focus/keyboard machinery (arrows, Space-peek, Enter), so a new
 // strip only has to appear in this table to get the full behavior.
 let famData = null, famKey = null; // Genealogy sheets cache (anchored to the WI)
-const RW = ['working', 'ref', 'ref0', 'slot', 'pin'];   // the only WRITABLE containers
+const RW = ['working', 'ref', 'ref0', 'pin'];   // the only WRITABLE containers (Output is read-only)
 // The strip registry: name -> getter. FLAT by design - a getter carries its
 // own availability check, so there is no ordering to get wrong (the old
 // if-chain let a genealogy guard swallow the grid/lora lookups). Contract:
@@ -273,23 +274,35 @@ async function refresh() {
 }
 
 function thumb(id, cls) {
+  // a .th wrapper (it carries data-id / the container's data-target+index)
+  // around the img, so STATE MARKS can sit in its corners: the pin (top
+  // right, only when pinned - a mark, never a button) and the fresh dot
+  // (bottom left: a spawn nobody has touched; the next round throws it away)
+  const w = document.createElement('span');
+  w.className = 'th'; w.dataset.id = id; w.draggable = true;
   const im = document.createElement('img');
-  im.src = imgURL(id); im.dataset.id = id; im.draggable = true; im.className = cls || '';
+  im.src = imgURL(id); im.className = cls || '';
   im.loading = 'lazy';
-  im.title = tip(id);
-  // recompute on hover: memoized strips keep their DOM across polls, so a
-  // baked title goes stale (a moved image kept showing its old path)
-  im.addEventListener('mouseenter', () => { im.title = tip(id); });
-  im.addEventListener('dragstart', e => dragStart(e, id));
+  w.title = tip(id);
+  w.addEventListener('mouseenter', () => { w.title = tip(id); });
+  w.addEventListener('dragstart', e => dragStart(e, id));
   im.addEventListener('error', () => {   // file gone (emptied / deleted outside)
     const d = document.createElement('div');
     d.className = 'gonebox';
-    d.dataset.id = id;
     d.textContent = '#' + id + String.fromCharCode(10) + 'file gone';
     d.title = '#' + id + ' — the record survives in the journal; the file was emptied or deleted';
     if (im.parentNode) im.replaceWith(d);
   }, {once: true});
-  return im;
+  w.appendChild(im);
+  if (S && (S.pins || []).includes(id)) {
+    const p = document.createElement('span'); p.className = 'pinmark'; p.innerHTML = icon(I.pin, 14); p.title = 'pinned';
+    w.appendChild(p);
+  }
+  if (S && (S.fresh || []).includes(id)) {
+    const f = document.createElement('span'); f.className = 'freshmark'; f.title = 'fresh: untouched output - the next round on its tab throws it away';
+    w.appendChild(f);
+  }
+  return w;
 }
 function tip(id) {
   const m = S.meta[id]; if (!m) return '#' + id;
@@ -1005,7 +1018,7 @@ function renderSlots() {
   for (let k = 0; k < S.slots; k++) {
     const id = cand[k];
     const d = document.createElement('div');
-    d.className = 'slot drop'; d.dataset.target = 'slot'; d.dataset.index = k; d.tabIndex = 0;
+    d.className = 'slot'; d.dataset.target = 'slot'; d.dataset.index = k; d.tabIndex = 0;
     if (id != null) {
       d.appendChild(thumb(id));
       d.addEventListener('dblclick', () => act('place', {id, target: 'working'}));
@@ -1207,7 +1220,7 @@ function syncHistory() {
   const id = Sel.id();
   const k = id == null ? -1 : S.history.indexOf(id);
   if (k < 0) { lastHistSync = id; return; }
-  const im = document.querySelector(`img[data-target="hist"][data-index="${k}"]`);
+  const im = document.querySelector(`[data-target="hist"][data-index="${k}"]`);
   if (!im) { lastHistSync = id; return; }
   const changed = id !== lastHistSync;
   lastHistSync = id;
@@ -1412,6 +1425,13 @@ document.addEventListener('keydown', async e => {
         await api('prune', {id, force: false, apply: true});
         refresh();
       } else openPrune(id, plan);
+      return;
+    }
+    if (Sel.target === 'slot' && id != null) {   // Output is read-only; Del = reject = trash (uniform with Shift+Del)
+      e.preventDefault();
+      const r = await api('discard', {id});
+      if (r.error) notice(r.error); else flash(`#${id} → trash`);
+      refresh();
       return;
     }
     if (Sel.target === 'lora') {    // remove the dataset WORD; the image is untouched
@@ -1741,9 +1761,8 @@ document.addEventListener('drop', async e => {
   if (own) { const r = await api('place', {id: +own, target: target.target, index: target.index}); if (r.error) flash(r.error); refresh(); return; }
   const files = [...(dt.files || [])].filter(f => f.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name));
   if (files.length) {
-    // first file to the drop target; extra files flow into following slots
-    await importBlob(files[0], target);
-    for (let k = 1; k < files.length && target.target === 'slot'; k++) await importBlob(files[k], {target: 'slot', index: target.index + k});
+    await importBlob(files[0], target);      // the first file to the drop target
+    if (files.length > 1) flash(`imported ${files[0].name}; drop the others onto folders in A mode`);
     return;
   }
   const uri = (dt.getData('text/uri-list') || dt.getData('text/plain') || '').split('\n').map(s => s.trim()).find(s => s && !s.startsWith('#'));

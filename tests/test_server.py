@@ -83,6 +83,10 @@ def main():
         s, m = post("/api/meta", {"id": k})
         assert m["tags"] == ["softlock", "freddy"] and m["description"] == "a kid" and m["gc"] == "live"
         s, _ = post("/api/place", {"id": k, "target": "working"})
+        s, r = post("/api/place", {"id": k, "target": "slot", "index": 0})
+        assert s == 409 and "read-only" in r["error"]
+        s, r = post("/api/clear", {"target": "slot", "index": 0})
+        assert s == 409
         s, fam = post("/api/family", {"id": A})
         assert [t["id"] for t in fam["children"]] == [X]
         s, plan = post("/api/prune", {"id": X})

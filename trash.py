@@ -25,12 +25,12 @@ def discard(store, i):
 
 
 def sweep(store, tab):
-    """Before a round: that tab's candidates the user did not pin are
-    archived (usable-to-crap is ~1:100). Never those in use (WI, ref0, refs)."""
+    """Before a round: that tab's candidates still FRESH (spawned and never
+    touched since) are thrown away. Touching anything - making it the WI,
+    referencing, pinning, tagging, moving... - is the keep decision."""
     with store.lock:
-        live = store.live_set()
         doomed = [q for q in store.state["candidates"].get(tab, [])
-                  if q not in live and not store.has(q, PINNED) and not store.is_archived(q)]
+                  if store.is_fresh(q) and not store.is_archived(q)]
         if doomed:
             store.archive(doomed)
             store.forget(doomed)

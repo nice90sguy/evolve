@@ -157,12 +157,14 @@ async def handle_place(request):
             store.save_state()
         elif target == "ref":
             store.state["controls"]["refs"][index] = i
+            store.touch([i])
             store.save_state()
         elif target == "ref0":
             store.state["controls"]["ref0"] = i
+            store.touch([i])
             store.save_state()
         elif target == "slot":
-            store.place_slot(i, index)
+            return error("Output is read-only: nothing gets into it but a round", 409)
         elif target == "pin":
             store.pin(i, True)
         else:
@@ -182,9 +184,7 @@ async def handle_clear(request):
         elif target == "ref0":
             store.state["controls"]["ref0"] = None
         elif target == "slot":
-            c = store.cands()
-            if index < len(c):
-                c.pop(index)
+            return error("Output is read-only (Del trashes the image instead)", 409)
         elif target == "pin":
             pins = store.pins()
             if index < len(pins):

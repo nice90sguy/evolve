@@ -121,6 +121,7 @@ def do_generate(store, cfg, progress=None, should_abort=None, embed_workflow=Fal
         free_vram()
     store.note_round(base, cfg.lora)
     mother = cfg.ref_ids[0] if cfg.has_ref0 else None
+    store.touch(cfg.ref_ids)                 # being bred from is a touch
     if mother is not None:
         store.hist_append(mother)            # history: bred-from only, co-parents excluded
     tags = store.birth_tags(mother)          # mother's words (minus pinned) + defaults
@@ -157,7 +158,7 @@ def do_generate(store, cfg, progress=None, should_abort=None, embed_workflow=Fal
         with Image.open(src) as im:
             i = store.add_image(im.convert("RGB"), "gen", recipe, list(cfg.ref_ids),
                                 chunks=harvest_chunks(im, payload, embed_workflow),
-                                inputs=inputs, tags=tags, dir=dest)
+                                inputs=inputs, tags=tags, dir=dest, fresh=True)
         store.add_candidate(tab, i)
         ids.append(i)
         if progress:

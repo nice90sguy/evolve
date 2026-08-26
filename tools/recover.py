@@ -73,8 +73,9 @@ def plan_for(store, i, src):
         return "staged hardlink (exact)", src["staged"][i]
     if i in src["train"]:
         return "_train copy (exact)", src["train"][i]
-    if r.get("sha1") in src["migrated"]:
-        return "_migrated original (sha1 match)", src["migrated"][r["sha1"]]
+    for h in (r.get("source_sha1"), r.get("sha1")):     # the original's bytes (legacy: in sha1)
+        if h in src["migrated"]:
+            return "_migrated original (sha1 match)", src["migrated"][h]
     seed = (r.get("recipe") or {}).get("seed")
     if seed in src["scratch"]:
         return "scratch render (seed match, pixel-identical)", src["scratch"][seed]

@@ -758,7 +758,35 @@ behaviour they record is unchanged (builders verified byte-identical).
   same features), `api_to_ui.py`, README with the manual curl-level steps,
   and the original experiment payloads.
 
-## Folder Info — BUILT 2026-08-26 (the tag editor over a SET)
+## Candidates, freshness & pinning — BUILT 2026-08-26 (user's business rules)
+
+- **`fresh`** (record flag, journaled): every output of Create / Derive /
+  Camera is born fresh. Cleared by the first mutation touching the image:
+  becoming the WI, placed in ref0/a ref (`touch` event), pinned, tagged
+  (incl. cascade), described, moved, trashed by hand, bred from (these
+  ride on their own events; replay clears too). Viewing/selecting never
+  counts. Snapshot `fresh` list; blue dot mark bottom-left of the thumb.
+- **Auto-trash on Generate**: before a round, that tab's candidates still
+  fresh are thrown away (`trash.sweep`). Touched ones are merely
+  displaced. No trashcan button (proposed, scrubbed).
+- **Pinned = the word, nothing else**: no eviction from Output, no
+  exclusivity; `pin()` = add the word (+ restore from trash). The corner
+  pin icon is a STATE MARK on every thumb (top-right, only when pinned),
+  never a button.
+- **Output is read-only**: not a drop target, cannot be cleared or
+  reordered; nothing gets in but a round (`/api/place|clear` target
+  `slot` -> 409). **Del on a candidate = trash it** (rule b, uniform with
+  Shift+Del); drop-files-into-slots is gone (paste/drops go to the WI).
+- **Thumbs are wrapped** (`.th` span carries data-id/data-target/index;
+  the img inside) so marks can sit in corners.
+- **Two hashes** (the webp-in-the-popup bug): `sha1` = the store FILE's
+  bytes (rescan's identity fallback, pngs only); `source_sha1` = the
+  ORIGINAL's bytes for conversions (import dedupe; rescan treats a
+  matching non-png as "already converted - skip", never as the file).
+  Legacy records mis-pointed at a webp/jpg are repaired on rescan
+  (re-pointed to their `<id>.png` twin, re-converted if the twin is
+  gone; `rehash` journal event).
+
 
 Right-click a folder node in A mode -> Folder Info popup: path, image
 counts (here / in subfolders), the words present with counts, add/remove

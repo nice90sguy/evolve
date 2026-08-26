@@ -88,12 +88,24 @@ def test_trash_ops():
         k2 = st.add_image(IM, "gen", recipe={"prompt": "k", "seed": 4}, parents=[X])
         st.pin(k, True)
         assert st.pins() == [k]
+        # fresh spawns die at the next round; anything touched survives
+        f1 = st.add_image(IM, "gen", recipe={"prompt": "f", "seed": 7}, parents=[X], fresh=True)
+        f2 = st.add_image(IM, "gen", recipe={"prompt": "f", "seed": 8}, parents=[X], fresh=True)
+        f3 = st.add_image(IM, "gen", recipe={"prompt": "f", "seed": 9}, parents=[X], fresh=True)
+        assert st.is_fresh(f1) and st.is_fresh(f2) and st.is_fresh(f3) and not st.is_fresh(X)
+        st.tag([f1], add=["keep"])                      # touched by a word
+        st.set_working(f2)                              # touched by becoming the WI
+        st.state["candidates"]["derive"] = [f1, f2, f3, X, k]
+        assert trash.sweep(st, "derive") == 1 and st.is_archived(f3)
+        assert not st.is_archived(f1) and not st.is_archived(f2) and not st.is_archived(X)
+        assert st.state["candidates"]["derive"] == [f1, f2, X, k]   # pinned k sits in Output untouched
+        st.archive([f1, f2], force=True)
         st.state["candidates"]["derive"] = [k2, X]
         st.state["working"] = X
-        assert trash.sweep(st, "derive") == 1 and st.is_archived(k2) and not st.is_archived(X)
-        assert st.state["candidates"]["derive"] == [X]
+        assert trash.sweep(st, "derive") == 0                      # nothing fresh: nothing thrown away
+        st.archive([k2])
         plan = trash.prune_plan(st, X)
-        assert plan["archive"] == [X] and plan["keep"] == [{"id": k, "why": "pinned"}] and plan["already"] == 1
+        assert plan["archive"] == [X] and plan["keep"] == [{"id": k, "why": "pinned"}] and plan["already"] == 4   # k2, f1, f2, f3
         plan = trash.prune_apply(st, X, force=True)
         assert sorted(plan["archive"]) == [X, k] and plan["unpin"] == [k]
         assert st.is_archived(k) and not st.has(k, PINNED) and st.state["working"] is None
@@ -102,7 +114,7 @@ def test_trash_ops():
         st.restore([A]); st.pin(A, True)
         assert trash.discard(st, A).startswith("kept: pinned")
         st.pin(A, False); st.archive([A])
-        assert trash.empty_trash(st, apply=True)["removed"] == 4
+        assert trash.empty_trash(st, apply=True)["removed"] == 7
         assert trash.discard(st, A) == "not found"
         print("trash ops ok")
     finally:
@@ -151,7 +163,11 @@ def test_import_and_loras():
         i, new = st.import_bytes(buf.getvalue(), tags=["lora_dataset_julie"])
         assert new and st.tags(i) == ["imp", "lora_dataset_julie"]
         i2, new2 = st.import_bytes(buf.getvalue(), tags=["again"])
-        assert i2 == i and not new2 and "again" in st.tags(i)          # sha1 re-attach + word
+        assert i2 == i and not new2 and "again" in st.tags(i)          # source_sha1 re-attach + word
+        from image_file import sha1_of
+        assert st.images[i]["source_sha1"] == sha1_of(buf.getvalue())
+        assert st.images[i]["sha1"] == sha1_of(st.path(i).read_bytes())  # the STORE file's bytes
+        assert st.images[i]["sha1"] != st.images[i]["source_sha1"]
         with Image.open(st.path(i)) as im:
             assert im.getpixel((0, 0)) == (255, 255, 255) and "prompt" in im.info
             assert json.loads(im.info["evolve"])["id"] == i
