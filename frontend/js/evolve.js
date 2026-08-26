@@ -233,7 +233,7 @@ function setOpen(car, open) {   // programmatic toggle: not a user preference
   car._forced = open;
   car.open = open;
 }
-function fillStrip(name, els, empty) {
+function fillStrip(name, els, empty, key) {
   const car = $('#car-' + name);
   car.querySelector('.n').textContent = els.length;
   // STRICT rule (user, 2026-08-24): zero items = cannot expand. No
@@ -245,6 +245,9 @@ function fillStrip(name, els, empty) {
   else if (openable && car.dataset.wasEmpty === '1' && localStorage.getItem('open:' + car.id) !== '0') setOpen(car, true);
   car.dataset.wasEmpty = openable ? '0' : '1';
   const strip = car.querySelector('.strip');
+  const fullKey = (key || '') + '|' + car.open + '|' + els.length;
+  if (key && strip.dataset.key === fullKey) return;   // unchanged: keep the DOM
+  strip.dataset.key = fullKey;
   strip.innerHTML = '';
   if (!car.open) return;
   if (!els.length) { if (empty) strip.innerHTML = '<span class="hint">' + empty + '</span>'; return; }
@@ -877,9 +880,9 @@ async function renderGenealogy() {
     im.addEventListener('dblclick', () => act('place', {id: t.id, target: 'working'}));
     return im;
   };
-  fillStrip('gpar', famData.parents.map(tile), 'fiat — no reference images');
-  fillStrip('gsib', famData.siblings.map(tile));
-  fillStrip('gkid', famData.children.map(tile), 'no children yet');
+  fillStrip('gpar', famData.parents.map(tile), 'fiat — no reference images', 'gp:' + famKey);
+  fillStrip('gsib', famData.siblings.map(tile), null, 'gs:' + famKey);
+  fillStrip('gkid', famData.children.map(tile), 'no children yet', 'gk:' + famKey);
 }
 { // the Genealogy section itself: sticky open/close like any carousel
   const gn = $('#genea'), gk = 'open:genea';
@@ -894,6 +897,9 @@ function renderSlots() {
   const pending = (S.busy && S.busy.tab === activeTab()) ? S.busy.total - S.busy.done : 0;
   $('#output .n').textContent = S.slots;
   const sheet = $('#sheet');
+  const skey = activeTab() + ':' + cand.join(',') + ':' + S.slots + ':' + pending;
+  if (sheet.dataset.key === skey) { layoutSlots(); return; }
+  sheet.dataset.key = skey;
   sheet.innerHTML = '';
   for (let k = 0; k < S.slots; k++) {
     const id = cand[k];
@@ -955,7 +961,7 @@ function renderCarousel(name, ids) {
     const im = thumb(id);
     im.addEventListener('dblclick', () => act('place', {id, target: 'working'}));
     return im;
-  }));
+  }), null, name + ':' + ids.join(','));
   const strip = $('#car-' + name + ' .strip');
   if (name === 'hist' && S.working !== lastCurWorking) {
     lastCurWorking = S.working;
