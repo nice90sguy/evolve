@@ -789,6 +789,18 @@ behaviour they record is unchanged (builders verified byte-identical).
 - **Auto-trash on Generate**: before a round, that tab's candidates still
   fresh are thrown away (`trash.sweep`). Touched ones are merely
   displaced. No trashcan button (proposed, scrubbed).
+- **THE INVARIANT (user, 2026-08-26 evening, after fresh images turned up
+  in folders): a fresh image exists ONLY in an Output grid.** Nowhere
+  else may show it (folders, views, word counts, Family all hide fresh
+  ids client-side), and a fresh image listed in no tab's candidates is an
+  ORPHAN that is thrown away quietly (`Store.orphan_fresh` /
+  `trash.sweep_orphans` at startup and inside every `sweep`). Shrinking
+  a tab's Output count trashes the fresh tail (`set_slots(n, tab)`),
+  and landing has no cap. The escape that prompted this: tab switches
+  sent the new count before saving the tab, so the server truncated the
+  OLD tab's list and the cut-off images (still fresh) lingered in their
+  folder. The lesson: enforce the state as an invariant (fresh ⇒
+  listed), never as per-gesture bookkeeping.
 - **Pinned = the word, nothing else**: no eviction from Output, no
   exclusivity; `pin()` = add the word (+ restore from trash). The corner
   pin icon is a STATE MARK on every thumb (top-right, only when pinned),
